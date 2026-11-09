@@ -52,7 +52,7 @@ struct Board: Codable {
 /// アプリ本体とウィジェットで共有する保存領域（App Group）。
 enum SharedStorage {
     /// project.yml の App Group と必ず一致させる
-    static let appGroup = "group.com.example.launchgrid"
+    static let appGroup = "group.com.example.geode"
 
     static var container: URL {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)

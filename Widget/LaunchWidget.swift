@@ -68,7 +68,7 @@ struct LaunchWidgetView: View {
     let entry: LaunchEntry
 
     private func url(_ item: LaunchItem) -> URL {
-        URL(string: "launchgrid://run?id=\(item.id.uuidString)")!
+        URL(string: "geode://run?id=\(item.id.uuidString)")!
     }
 
     var body: some View {
@@ -111,7 +111,7 @@ struct LaunchWidget: Widget {
         AppIntentConfiguration(kind: "LaunchWidget", intent: SelectSourceIntent.self, provider: Provider()) { entry in
             LaunchWidgetView(entry: entry)
         }
-        .configurationDisplayName("LaunchGrid")
+        .configurationDisplayName("Geode")
         .description("ホーム画面からアクションを直接起動します。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }

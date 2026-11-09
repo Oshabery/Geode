@@ -36,12 +36,12 @@ struct ContentView: View {
             if editing {
                 EditGridView(slots: $store.board.slots, layout: store.board.layout, allowGroups: true)
             } else {
-                LaunchGridView()
+                LauncherGridView()
             }
         }
         .background(Color(.systemGroupedBackground))
         .sheet(isPresented: $showLayout) { LayoutSettings().environmentObject(store) }
-        .alert("LaunchGrid", isPresented: Binding(get: { info != nil }, set: { if !$0 { info = nil } })) {
+        .alert("Geode", isPresented: Binding(get: { info != nil }, set: { if !$0 { info = nil } })) {
             Button("OK") {}
         } message: { Text(info ?? "") }
         .alert("起動エラー", isPresented: Binding(get: { store.errorMessage != nil },

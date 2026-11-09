@@ -55,7 +55,7 @@ struct CellView: View {
 /// - アクション: タップで URL スキームを開く
 /// - グループ: 触れた瞬間に 1 レイヤー上へ中身を展開。指を滑らせて離すと起動。
 ///   その場で離すと展開したままになり、次のタップで選択。
-struct LaunchGridView: View {
+struct LauncherGridView: View {
     @EnvironmentObject private var store: BoardStore
     @State private var openGroup: LaunchItem?
     @State private var groupSlot: Int?

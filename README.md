@@ -1,4 +1,4 @@
-# LaunchGrid
+# Geode
 
 URL スキームでアプリを起動する iPhone 用ランチャー（SwiftUI + WidgetKit / iOS 17+）。
 
@@ -11,10 +11,10 @@ brew install xcodegen
 ```
 
 ```bash
-cd LaunchGrid && xcodegen && open LaunchGrid.xcodeproj
+cd Geode && xcodegen && open Geode.xcodeproj
 ```
 
-1. `project.yml` の `DEVELOPMENT_TEAM`、`com.example.launchgrid`（Bundle ID）、`group.com.example.launchgrid`（App Group）を自分のものに変更
+1. `project.yml` の `DEVELOPMENT_TEAM`、`com.example.geode`（Bundle ID）、`group.com.example.geode`（App Group）を自分のものに変更
 2. App Group を変えたら `Shared/Models.swift` の `SharedStorage.appGroup` も同じ値に
 3. `xcodegen` を再実行して実機でビルド
 

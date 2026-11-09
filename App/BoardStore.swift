@@ -36,7 +36,7 @@ final class BoardStore: ObservableObject {
     }
 
     func handle(_ url: URL) {
-        guard url.scheme == "launchgrid",
+        guard url.scheme == "geode",
               let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let idString = comps.queryItems?.first(where: { $0.name == "id" })?.value,
               let id = UUID(uuidString: idString),
