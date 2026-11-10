@@ -3,3 +3,4 @@ Config/
 .DS_Store
 xcuserdata/
 DerivedData/
+Local.xcconfig

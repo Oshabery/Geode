@@ -14,9 +14,13 @@ brew install xcodegen
 cd Geode && xcodegen && open Geode.xcodeproj
 ```
 
-1. `project.yml` の `DEVELOPMENT_TEAM`、`com.example.geode`（Bundle ID）、`group.com.example.geode`（App Group）を自分のものに変更
-2. App Group を変えたら `Shared/Models.swift` の `SharedStorage.appGroup` も同じ値に
-3. `xcodegen` を再実行して実機でビルド
+実機で動かす場合は、Team ID を `Local.xcconfig`（git 管理外）に書いてから `xcodegen` を実行します。
+
+```
+DEVELOPMENT_TEAM = XXXXXXXXXX
+```
+
+Bundle ID は `com.oshabery.geode`、App Group は `group.com.oshabery.geode` です。変える場合は `project.yml` と `Shared/Models.swift` の `SharedStorage.appGroup` を揃えてください。
 
 ## 使い方
 
