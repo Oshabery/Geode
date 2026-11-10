@@ -60,7 +60,7 @@ struct HSBEditor: View {
                     .keyboardType(.numbersAndPunctuation)
                     .submitLabel(.done)
                     .autocorrectionDisabled()
-                    .foregroundStyle(invalid ? .red : .primary)
+                    .foregroundStyle(invalid ? Color.red : Color.primary)
                     .onSubmit(applyCode)
             }
             row("H", value: $color.h, range: 0...360, unit: "°")
