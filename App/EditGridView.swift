@@ -19,6 +19,7 @@ struct EditGridView: View {
     @AppStorage("showLabels") private var showLabels = true
     @AppStorage("gridGap") private var gridGap = GridDefaults.gap
     @AppStorage("iconScale") private var iconScale = GridDefaults.iconScale
+    @AppStorage("showGridLines") private var showGridLines = true
     @State private var createSlot: Int?
     @State private var target: EditorTarget?
     @State private var dragFrom: Int?
@@ -33,6 +34,7 @@ struct EditGridView: View {
                                       gap: gridGap, iconScale: iconScale)
             ZStack {
                 Color.clear
+                if showGridLines { GridLines(metrics: metrics) }
                 ForEach(0..<layout.capacity, id: \.self) { slot in
                     cell(slot, metrics: metrics)
                         .frame(width: metrics.cellSize.width, height: metrics.cellSize.height, alignment: .top)
@@ -42,7 +44,7 @@ struct EditGridView: View {
             }
             .coordinateSpace(name: "editgrid")
         }
-        .foregroundStyle(Color.accentColor)
+        .foregroundStyle(.tint)
         .confirmationDialog("何を作成しますか？",
                             isPresented: Binding(get: { createSlot != nil }, set: { if !$0 { createSlot = nil } }),
                             titleVisibility: .visible,
@@ -74,8 +76,7 @@ struct EditGridView: View {
                         Image(systemName: "xmark")
                             .font(.caption.bold())
                             .frame(width: 26, height: 26)
-                            .background(Circle().fill(Color(.systemBackground)))
-                            .overlay(Circle().stroke(lineWidth: 1))
+                            .glass(in: Circle(), interactive: true)
                     }
                     .offset(x: -8, y: -8)
                 }
@@ -103,7 +104,7 @@ struct EditGridView: View {
                         }
                 )
         } else {
-            // 空きマス: アイコンと同じ角丸の塗りタイル + 中央に＋
+            // 空きマス: アイコンと同じ角丸のガラスタイル + 中央に＋
             Button {
                 if allowGroups {
                     createSlot = slot
@@ -111,13 +112,11 @@ struct EditGridView: View {
                     target = EditorTarget(slot: slot, item: LaunchItem(kind: .action, name: ""))
                 }
             } label: {
-                ZStack {
-                    iconShape(metrics.tile).fill(Self.addColor)
-                    Image(systemName: "plus")
-                        .font(.system(size: metrics.tile * 0.36, weight: .regular))
-                        .foregroundStyle(.white)
-                }
-                .frame(width: metrics.tile, height: metrics.tile)
+                Image(systemName: "plus")
+                    .font(.system(size: metrics.tile * 0.36, weight: .regular))
+                    .foregroundStyle(.white)
+                    .frame(width: metrics.tile, height: metrics.tile)
+                    .glass(in: iconShape(metrics.tile), tint: Self.addColor, interactive: true)
             }
             .buttonStyle(.plain)
         }

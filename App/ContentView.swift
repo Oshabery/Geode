@@ -23,26 +23,33 @@ enum Appearance: Int, CaseIterable, Identifiable {
 struct ContentView: View {
     @EnvironmentObject private var store: BoardStore
     @AppStorage("appearance") private var appearance = Appearance.auto.rawValue
+    @AppStorage("useCustomBackground") private var useCustomBackground = false
+    @AppStorage("backgroundColor") private var backgroundColor = Theme.defaultBackground
+    @AppStorage("useCustomTint") private var useCustomTint = false
+    @AppStorage("tintColor") private var tintColor = Theme.defaultTint
     @State private var editing = false
     @State private var showSettings = false
 
     private var scheme: ColorScheme? { Appearance(rawValue: appearance)?.colorScheme }
+    private var tint: Color? { useCustomTint ? tintColor.color : nil }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Button { showSettings = true } label: {
-                    Image(systemName: "gearshape").font(.title2)
+                    Image(systemName: "gearshape").font(.title3).frame(width: 44, height: 44)
                 }
+                .glass(in: Circle(), interactive: true)
                 .accessibilityLabel("設定")
                 Spacer()
                 Button { editing.toggle() } label: {
-                    Image(systemName: editing ? "checkmark.circle.fill" : "pencil").font(.title2)
+                    Image(systemName: editing ? "checkmark" : "pencil").font(.title3).frame(width: 44, height: 44)
                 }
+                .glass(in: Circle(), tint: editing ? tint ?? .accentColor : nil, interactive: true)
                 .accessibilityLabel(editing ? "編集を完了" : "編集")
             }
-            .padding(.horizontal, 20)
-            .frame(height: 48)
+            .padding(.horizontal, 16)
+            .frame(height: 56)
 
             if editing {
                 EditGridView(slots: $store.board.slots, layout: store.board.layout, allowGroups: true)
@@ -50,11 +57,13 @@ struct ContentView: View {
                 LauncherGridView()
             }
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .background((useCustomBackground ? backgroundColor.color : Color(.systemBackground)).ignoresSafeArea())
+        .tint(tint)
         .preferredColorScheme(scheme)
         .sheet(isPresented: $showSettings) {
             SettingsView()
                 .environmentObject(store)
+                .tint(tint)
                 .preferredColorScheme(scheme)
         }
         .alert("起動エラー", isPresented: Binding(get: { store.errorMessage != nil },
@@ -71,6 +80,13 @@ struct SettingsView: View {
     @AppStorage("showLabels") private var showLabels = true
     @AppStorage("gridGap") private var gridGap = GridDefaults.gap
     @AppStorage("iconScale") private var iconScale = GridDefaults.iconScale
+    @AppStorage("useCustomBackground") private var useCustomBackground = false
+    @AppStorage("backgroundColor") private var backgroundColor = Theme.defaultBackground
+    @AppStorage("useCustomTint") private var useCustomTint = false
+    @AppStorage("tintColor") private var tintColor = Theme.defaultTint
+    @AppStorage("glassIcons") private var glassIcons = false
+    @AppStorage("labelWeight") private var labelWeight = Theme.defaultWeight
+    @AppStorage("showGridLines") private var showGridLines = true
     @State private var working = false
     @State private var message: String?
 
@@ -96,6 +112,25 @@ struct SettingsView: View {
                         ForEach(Appearance.allCases) { Text($0.title).tag($0.rawValue) }
                     }
                     .pickerStyle(.segmented)
+                    Toggle("アイコンをガラス風にする", isOn: $glassIcons)
+                }
+
+                Section {
+                    Toggle("背景色を指定", isOn: $useCustomBackground)
+                    if useCustomBackground { HSBEditor(color: $backgroundColor) }
+                } header: {
+                    Text("背景色（HSB）")
+                } footer: {
+                    Text("オフのときは外観モードに合わせた白 / 黒になります。")
+                }
+
+                Section {
+                    Toggle("UI の色を指定", isOn: $useCustomTint)
+                    if useCustomTint { HSBEditor(color: $tintColor) }
+                } header: {
+                    Text("UI の色（HSB）")
+                } footer: {
+                    Text("アプリ名、グリッド線、ボタン、シンボルのアイコンに使う色です。コードは「色相 0–360, 彩度 0–100, 明度 0–100」の順で入力します。")
                 }
 
                 Section {
@@ -120,6 +155,11 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("アプリ名を表示", isOn: $showLabels)
+                    Picker("アプリ名の太さ", selection: $labelWeight) {
+                        ForEach(Theme.weights.indices, id: \.self) { Text(Theme.weights[$0].name).tag($0) }
+                    }
+                    .disabled(!showLabels)
+                    Toggle("グリッド線を表示", isOn: $showGridLines)
                     Stepper("列: \(store.board.layout.columns)", value: layoutBinding(\.columns), in: 2...5)
                     Stepper("行: \(store.board.layout.rows)", value: layoutBinding(\.rows), in: 3...8)
                 } header: {

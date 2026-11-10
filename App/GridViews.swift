@@ -60,21 +60,50 @@ struct GridCells<Cell: View>: View {
     }
 }
 
+/// アイコンとアイコンの間（余白の中央）に引く区切り線
+struct GridLines: View {
+    let metrics: GridMetrics
+
+    var body: some View {
+        Path { p in
+            let cols = metrics.layout.columns, rows = metrics.layout.rows
+            let stepX = metrics.tile + metrics.gapX
+            let stepY = metrics.cellSize.height + metrics.gapY
+            let width = CGFloat(cols) * stepX + metrics.gapX
+            let height = CGFloat(rows) * stepY + metrics.gapY
+            for c in 1..<max(cols, 2) {
+                let x = CGFloat(c) * stepX + metrics.gapX / 2
+                p.move(to: CGPoint(x: x, y: metrics.gapY / 2))
+                p.addLine(to: CGPoint(x: x, y: height - metrics.gapY / 2))
+            }
+            for r in 1..<max(rows, 2) {
+                let y = CGFloat(r) * stepY + metrics.gapY / 2
+                p.move(to: CGPoint(x: metrics.gapX / 2, y: y))
+                p.addLine(to: CGPoint(x: width - metrics.gapX / 2, y: y))
+            }
+        }
+        .stroke(.tint.opacity(0.35), lineWidth: 1)
+        .allowsHitTesting(false)
+    }
+}
+
 /// 1 マス分の表示（アイコン + 任意でアプリ名）
 struct TileView: View {
     let item: LaunchItem?
     let metrics: GridMetrics
     var highlighted = false
+    @AppStorage("glassIcons") private var glassIcons = false
+    @AppStorage("labelWeight") private var labelWeight = Theme.defaultWeight
 
     var body: some View {
         if let item {
             VStack(spacing: 0) {
-                ItemIcon(item: item, size: metrics.tile)
+                ItemIcon(item: item, size: metrics.tile, glass: glassIcons)
                     .overlay(iconShape(metrics.tile).fill(Color.white.opacity(highlighted ? 0.3 : 0)))
                     .scaleEffect(highlighted ? 1.06 : 1)
                 if metrics.labelHeight > 0 {
                     Text(item.name)
-                        .font(.caption)
+                        .font(.caption.weight(Theme.weight(labelWeight)))
                         .lineLimit(1)
                         .frame(width: metrics.tile, height: metrics.labelHeight)
                 }
@@ -94,6 +123,7 @@ struct LauncherGridView: View {
     @AppStorage("showLabels") private var showLabels = true
     @AppStorage("gridGap") private var gridGap = GridDefaults.gap
     @AppStorage("iconScale") private var iconScale = GridDefaults.iconScale
+    @AppStorage("showGridLines") private var showGridLines = true
     @State private var openGroup: LaunchItem?
     @State private var groupSlot: Int?
     @State private var highlighted: Int?
@@ -105,14 +135,19 @@ struct LauncherGridView: View {
             let metrics = GridMetrics(size: geo.size, layout: store.board.layout, showLabels: showLabels,
                                       gap: gridGap, iconScale: iconScale)
             ZStack {
+                if showGridLines { GridLines(metrics: metrics) }
                 GridCells(metrics: metrics) { slot in
                     TileView(item: store.board.slots[slot], metrics: metrics,
                              highlighted: openGroup == nil && highlighted == slot)
                 }
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(.tint)
 
                 if let group = openGroup {
-                    Color(white: 0.1).opacity(0.96).ignoresSafeArea()
+                    // グループ展開時の背景: 暗いすりガラス
+                    Rectangle().fill(.ultraThinMaterial)
+                        .environment(\.colorScheme, .dark)
+                        .overlay(Color.black.opacity(0.35))
+                        .ignoresSafeArea()
                     GridCells(metrics: metrics) { slot in
                         if slot == groupSlot {
                             TileView(item: group, metrics: metrics, highlighted: true)
