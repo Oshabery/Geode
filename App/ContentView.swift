@@ -69,6 +69,8 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("appearance") private var appearance = Appearance.auto.rawValue
     @AppStorage("showLabels") private var showLabels = true
+    @AppStorage("gridGap") private var gridGap = GridDefaults.gap
+    @AppStorage("iconScale") private var iconScale = GridDefaults.iconScale
     @State private var working = false
     @State private var message: String?
 
@@ -94,6 +96,26 @@ struct SettingsView: View {
                         ForEach(Appearance.allCases) { Text($0.title).tag($0.rawValue) }
                     }
                     .pickerStyle(.segmented)
+                }
+
+                Section {
+                    VStack(alignment: .leading) {
+                        Text("アイコンサイズ: \(Int((iconScale * 100).rounded()))%")
+                        Slider(value: $iconScale, in: 0.4...1, step: 0.05)
+                    }
+                    VStack(alignment: .leading) {
+                        Text("余白: \(Int(gridGap)) pt")
+                        Slider(value: $gridGap, in: 0...40, step: 1)
+                    }
+                    Button("サイズと余白を初期値に戻す") {
+                        iconScale = GridDefaults.iconScale
+                        gridGap = GridDefaults.gap
+                    }
+                    .disabled(iconScale == GridDefaults.iconScale && gridGap == GridDefaults.gap)
+                } header: {
+                    Text("サイズと余白")
+                } footer: {
+                    Text("余白は、アイコン同士の間隔と画面端までの間隔の最小値です。アイコンサイズは、その余白で収まる最大サイズに対する割合です。小さくした分は余白へ均等に配分されます。")
                 }
 
                 Section {
@@ -132,6 +154,7 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("完了") { dismiss() } }
             }
+            .presentationDetents([.medium, .large])   // 半分の高さにすると、後ろのグリッドで変化を確認できる
             .alert("Geode", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
                 Button("OK") {}
             } message: { Text(message ?? "") }

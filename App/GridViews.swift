@@ -9,14 +9,16 @@ struct GridMetrics {
     let gapX: CGFloat          // 横方向の余白（タイル間 = 画面端）
     let gapY: CGFloat          // 縦方向の余白（タイル間 = 画面端）
 
-    init(size: CGSize, layout: GridLayout, showLabels: Bool) {
-        let minGap: CGFloat = 12
+    /// - gap: 最小余白 (pt)。アイコンはこの余白を確保したうえで収まる最大サイズになる
+    /// - iconScale: その最大サイズに対する倍率 (0.4...1)。小さくした分は余白へ均等に配分される
+    init(size: CGSize, layout: GridLayout, showLabels: Bool, gap: Double, iconScale: Double) {
+        let minGap = CGFloat(gap)
         let cols = CGFloat(layout.columns), rows = CGFloat(layout.rows)
         self.layout = layout
         labelHeight = showLabels ? 18 : 0
         let byWidth = (size.width - (cols + 1) * minGap) / cols
         let byHeight = (size.height - (rows + 1) * minGap) / rows - labelHeight
-        tile = max(min(byWidth, byHeight), 10)
+        tile = max(min(byWidth, byHeight) * CGFloat(min(max(iconScale, 0.4), 1)), 10)
         gapX = (size.width - cols * tile) / (cols + 1)
         gapY = (size.height - rows * (tile + labelHeight)) / (rows + 1)
     }
@@ -35,6 +37,11 @@ struct GridMetrics {
         let r = Int(((p.y - gapY / 2) / (cellSize.height + gapY)).rounded(.down))
         return min(max(r, 0), layout.rows - 1) * layout.columns + min(max(c, 0), layout.columns - 1)
     }
+}
+
+enum GridDefaults {
+    static let gap: Double = 12
+    static let iconScale: Double = 1
 }
 
 struct GridCells<Cell: View>: View {
@@ -85,6 +92,8 @@ struct TileView: View {
 struct LauncherGridView: View {
     @EnvironmentObject private var store: BoardStore
     @AppStorage("showLabels") private var showLabels = true
+    @AppStorage("gridGap") private var gridGap = GridDefaults.gap
+    @AppStorage("iconScale") private var iconScale = GridDefaults.iconScale
     @State private var openGroup: LaunchItem?
     @State private var groupSlot: Int?
     @State private var highlighted: Int?
@@ -93,7 +102,8 @@ struct LauncherGridView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let metrics = GridMetrics(size: geo.size, layout: store.board.layout, showLabels: showLabels)
+            let metrics = GridMetrics(size: geo.size, layout: store.board.layout, showLabels: showLabels,
+                                      gap: gridGap, iconScale: iconScale)
             ZStack {
                 GridCells(metrics: metrics) { slot in
                     TileView(item: store.board.slots[slot], metrics: metrics,

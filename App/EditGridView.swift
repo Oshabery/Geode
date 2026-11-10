@@ -17,6 +17,8 @@ struct EditGridView: View {
     var reservedItem: LaunchItem? = nil
 
     @AppStorage("showLabels") private var showLabels = true
+    @AppStorage("gridGap") private var gridGap = GridDefaults.gap
+    @AppStorage("iconScale") private var iconScale = GridDefaults.iconScale
     @State private var createSlot: Int?
     @State private var target: EditorTarget?
     @State private var dragFrom: Int?
@@ -27,7 +29,8 @@ struct EditGridView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let metrics = GridMetrics(size: geo.size, layout: layout, showLabels: showLabels)
+            let metrics = GridMetrics(size: geo.size, layout: layout, showLabels: showLabels,
+                                      gap: gridGap, iconScale: iconScale)
             ZStack {
                 Color.clear
                 ForEach(0..<layout.capacity, id: \.self) { slot in
