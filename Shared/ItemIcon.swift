@@ -10,7 +10,12 @@ func loadIconImage(_ file: String) -> UIImage? {
     return img
 }
 
-/// アプリアイコン画像があればそれを、無ければ丸枠付きの SF Symbol を表示。
+/// アプリアイコンと同じ角丸（スクワークル）形状
+func iconShape(_ size: CGFloat) -> RoundedRectangle {
+    RoundedRectangle(cornerRadius: size * 0.225, style: .continuous)
+}
+
+/// アプリアイコン画像があればそれを、無ければ角丸タイル + SF Symbol を表示。
 struct ItemIcon: View {
     let item: LaunchItem
     var size: CGFloat = 60
@@ -21,12 +26,14 @@ struct ItemIcon: View {
                 .resizable()
                 .scaledToFill()
                 .frame(width: size, height: size)
-                .clipShape(RoundedRectangle(cornerRadius: size * 0.225, style: .continuous))
+                .clipShape(iconShape(size))
         } else {
-            Image(systemName: item.symbol)
-                .font(.system(size: size * 0.42, weight: .light))
-                .frame(width: size, height: size)
-                .overlay(Circle().stroke(lineWidth: 1.5).padding(2))
+            ZStack {
+                iconShape(size).fill(.tint.opacity(0.18))
+                Image(systemName: item.symbol)
+                    .font(.system(size: size * 0.45, weight: .light))
+            }
+            .frame(width: size, height: size)
         }
     }
 }

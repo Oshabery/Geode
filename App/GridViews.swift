@@ -1,52 +1,79 @@
 import SwiftUI
 
-/// rows × columns の等分グリッド。slot = row * columns + column
-struct GridCells<Cell: View>: View {
+/// グリッドの寸法計算。
+/// タイルは正方形で、タイル間の余白と画面端の余白が（縦横それぞれ）同じピクセル数になるよう配置する。
+struct GridMetrics {
     let layout: GridLayout
+    let tile: CGFloat          // アイコン 1 辺
+    let labelHeight: CGFloat   // アプリ名の高さ（非表示なら 0）
+    let gapX: CGFloat          // 横方向の余白（タイル間 = 画面端）
+    let gapY: CGFloat          // 縦方向の余白（タイル間 = 画面端）
+
+    init(size: CGSize, layout: GridLayout, showLabels: Bool) {
+        let minGap: CGFloat = 12
+        let cols = CGFloat(layout.columns), rows = CGFloat(layout.rows)
+        self.layout = layout
+        labelHeight = showLabels ? 18 : 0
+        let byWidth = (size.width - (cols + 1) * minGap) / cols
+        let byHeight = (size.height - (rows + 1) * minGap) / rows - labelHeight
+        tile = max(min(byWidth, byHeight), 10)
+        gapX = (size.width - cols * tile) / (cols + 1)
+        gapY = (size.height - rows * (tile + labelHeight)) / (rows + 1)
+    }
+
+    var cellSize: CGSize { CGSize(width: tile, height: tile + labelHeight) }
+
+    func center(_ slot: Int) -> CGPoint {
+        let c = CGFloat(slot % layout.columns), r = CGFloat(slot / layout.columns)
+        return CGPoint(x: gapX + c * (tile + gapX) + tile / 2,
+                       y: gapY + r * (cellSize.height + gapY) + cellSize.height / 2)
+    }
+
+    /// 座標 → スロット番号（余白部分は近い方のタイルに寄せる）
+    func slot(at p: CGPoint) -> Int {
+        let c = Int(((p.x - gapX / 2) / (tile + gapX)).rounded(.down))
+        let r = Int(((p.y - gapY / 2) / (cellSize.height + gapY)).rounded(.down))
+        return min(max(r, 0), layout.rows - 1) * layout.columns + min(max(c, 0), layout.columns - 1)
+    }
+}
+
+struct GridCells<Cell: View>: View {
+    let metrics: GridMetrics
     @ViewBuilder let cell: (Int) -> Cell
 
     var body: some View {
-        VStack(spacing: 0) {
-            ForEach(0..<layout.rows, id: \.self) { r in
-                HStack(spacing: 0) {
-                    ForEach(0..<layout.columns, id: \.self) { c in
-                        cell(r * layout.columns + c)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                }
+        ZStack {
+            Color.clear
+            ForEach(0..<metrics.layout.capacity, id: \.self) { slot in
+                cell(slot)
+                    .frame(width: metrics.cellSize.width, height: metrics.cellSize.height, alignment: .top)
+                    .position(metrics.center(slot))
             }
         }
     }
 }
 
-func slotIndex(at point: CGPoint, in size: CGSize, layout: GridLayout) -> Int {
-    let w = size.width / CGFloat(layout.columns)
-    let h = size.height / CGFloat(layout.rows)
-    let c = min(max(Int(point.x / max(w, 1)), 0), layout.columns - 1)
-    let r = min(max(Int(point.y / max(h, 1)), 0), layout.rows - 1)
-    return r * layout.columns + c
-}
-
-struct CellView: View {
+/// 1 マス分の表示（アイコン + 任意でアプリ名）
+struct TileView: View {
     let item: LaunchItem?
+    let metrics: GridMetrics
     var highlighted = false
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack {
-                Rectangle().fill(highlighted ? Color.accentColor.opacity(0.35) : Color.clear)
-                if let item {
-                    VStack(spacing: 6) {
-                        ItemIcon(item: item, size: min(geo.size.width, geo.size.height) * 0.5)
-                        Text(item.name)
-                            .font(.footnote)
-                            .lineLimit(1)
-                            .padding(.horizontal, 4)
-                    }
+        if let item {
+            VStack(spacing: 0) {
+                ItemIcon(item: item, size: metrics.tile)
+                    .overlay(iconShape(metrics.tile).fill(Color.white.opacity(highlighted ? 0.3 : 0)))
+                    .scaleEffect(highlighted ? 1.06 : 1)
+                if metrics.labelHeight > 0 {
+                    Text(item.name)
+                        .font(.caption)
+                        .lineLimit(1)
+                        .frame(width: metrics.tile, height: metrics.labelHeight)
                 }
             }
-            .frame(width: geo.size.width, height: geo.size.height)
-            .overlay(Rectangle().stroke(Color.gray.opacity(0.25), lineWidth: 0.5))
+        } else {
+            Color.clear
         }
     }
 }
@@ -57,6 +84,7 @@ struct CellView: View {
 ///   その場で離すと展開したままになり、次のタップで選択。
 struct LauncherGridView: View {
     @EnvironmentObject private var store: BoardStore
+    @AppStorage("showLabels") private var showLabels = true
     @State private var openGroup: LaunchItem?
     @State private var groupSlot: Int?
     @State private var highlighted: Int?
@@ -65,21 +93,21 @@ struct LauncherGridView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let layout = store.board.layout
+            let metrics = GridMetrics(size: geo.size, layout: store.board.layout, showLabels: showLabels)
             ZStack {
-                GridCells(layout: layout) { slot in
-                    CellView(item: store.board.slots[slot],
+                GridCells(metrics: metrics) { slot in
+                    TileView(item: store.board.slots[slot], metrics: metrics,
                              highlighted: openGroup == nil && highlighted == slot)
                 }
                 .foregroundStyle(Color.accentColor)
 
                 if let group = openGroup {
-                    Color(white: 0.12).opacity(0.97)
-                    GridCells(layout: layout) { slot in
+                    Color(white: 0.1).opacity(0.96).ignoresSafeArea()
+                    GridCells(metrics: metrics) { slot in
                         if slot == groupSlot {
-                            CellView(item: group, highlighted: true)
+                            TileView(item: group, metrics: metrics, highlighted: true)
                         } else {
-                            CellView(item: group.children[slot], highlighted: highlighted == slot)
+                            TileView(item: group.children[slot], metrics: metrics, highlighted: highlighted == slot)
                         }
                     }
                     .foregroundStyle(.white)
@@ -88,10 +116,11 @@ struct LauncherGridView: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { touchMoved(slotIndex(at: $0.location, in: geo.size, layout: layout)) }
-                    .onEnded { touchEnded(slotIndex(at: $0.location, in: geo.size, layout: layout)) }
+                    .onChanged { touchMoved(metrics.slot(at: $0.location)) }
+                    .onEnded { touchEnded(metrics.slot(at: $0.location)) }
             )
             .animation(.easeOut(duration: 0.12), value: openGroup?.id)
+            .animation(.easeOut(duration: 0.1), value: highlighted)
         }
         .onAppear(perform: openRequestedGroup)
         .onChange(of: store.requestedGroup) { _, _ in openRequestedGroup() }

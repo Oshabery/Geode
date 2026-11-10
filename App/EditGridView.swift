@@ -16,24 +16,25 @@ struct EditGridView: View {
     var reservedSlot: Int? = nil
     var reservedItem: LaunchItem? = nil
 
+    @AppStorage("showLabels") private var showLabels = true
     @State private var createSlot: Int?
     @State private var target: EditorTarget?
     @State private var dragFrom: Int?
     @State private var dragOffset: CGSize = .zero
 
+    /// 空きマスの「＋」タイルの色
+    private static let addColor = Color(red: 0.255, green: 0.808, blue: 0.851)
+
     var body: some View {
         GeometryReader { geo in
-            VStack(spacing: 0) {
-                ForEach(0..<layout.rows, id: \.self) { r in
-                    HStack(spacing: 0) {
-                        ForEach(0..<layout.columns, id: \.self) { c in
-                            let slot = r * layout.columns + c
-                            cell(slot, size: geo.size)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .zIndex(dragFrom == slot ? 1 : 0)
-                        }
-                    }
-                    .zIndex(dragFrom.map { $0 / layout.columns } == r ? 1 : 0)
+            let metrics = GridMetrics(size: geo.size, layout: layout, showLabels: showLabels)
+            ZStack {
+                Color.clear
+                ForEach(0..<layout.capacity, id: \.self) { slot in
+                    cell(slot, metrics: metrics)
+                        .frame(width: metrics.cellSize.width, height: metrics.cellSize.height, alignment: .top)
+                        .position(metrics.center(slot))
+                        .zIndex(dragFrom == slot ? 1 : 0)
                 }
             }
             .coordinateSpace(name: "editgrid")
@@ -58,13 +59,11 @@ struct EditGridView: View {
     }
 
     @ViewBuilder
-    private func cell(_ slot: Int, size: CGSize) -> some View {
+    private func cell(_ slot: Int, metrics: GridMetrics) -> some View {
         if slot == reservedSlot {
-            CellView(item: reservedItem, highlighted: true).opacity(0.6)
+            TileView(item: reservedItem, metrics: metrics).opacity(0.45)
         } else if let item = slots[slot] {
-            CellView(item: item)
-                .padding(4)
-                .background(RoundedRectangle(cornerRadius: 4).fill(Color.gray.opacity(0.12)).padding(4))
+            TileView(item: item, metrics: metrics)
                 .overlay(alignment: .topLeading) {
                     Button {
                         slots[slot] = nil
@@ -75,6 +74,7 @@ struct EditGridView: View {
                             .background(Circle().fill(Color(.systemBackground)))
                             .overlay(Circle().stroke(lineWidth: 1))
                     }
+                    .offset(x: -8, y: -8)
                 }
                 .offset(dragFrom == slot ? dragOffset : .zero)
                 .scaleEffect(dragFrom == slot ? 1.08 : 1)
@@ -87,7 +87,7 @@ struct EditGridView: View {
                             dragOffset = v.translation
                         }
                         .onEnded { v in
-                            let to = slotIndex(at: v.location, in: size, layout: layout)
+                            let to = metrics.slot(at: v.location)
                             withAnimation(.snappy) {
                                 if to != slot, to != reservedSlot {
                                     let moving = slots[slot]
@@ -100,6 +100,7 @@ struct EditGridView: View {
                         }
                 )
         } else {
+            // 空きマス: アイコンと同じ角丸の塗りタイル + 中央に＋
             Button {
                 if allowGroups {
                     createSlot = slot
@@ -107,13 +108,15 @@ struct EditGridView: View {
                     target = EditorTarget(slot: slot, item: LaunchItem(kind: .action, name: ""))
                 }
             } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 34, weight: .ultraLight))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.accentColor.opacity(0.1))
-                    .overlay(Rectangle().stroke(Color.accentColor.opacity(0.6), lineWidth: 1))
-                    .padding(4)
+                ZStack {
+                    iconShape(metrics.tile).fill(Self.addColor)
+                    Image(systemName: "plus")
+                        .font(.system(size: metrics.tile * 0.36, weight: .regular))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: metrics.tile, height: metrics.tile)
             }
+            .buttonStyle(.plain)
         }
     }
 }
