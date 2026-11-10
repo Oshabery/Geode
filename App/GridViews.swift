@@ -5,17 +5,19 @@ import SwiftUI
 struct GridMetrics {
     let layout: GridLayout
     let tile: CGFloat          // アイコン 1 辺
-    let labelHeight: CGFloat   // アプリ名の高さ（非表示なら 0）
+    let labelHeight: CGFloat   // アイコン下の間隔 + アプリ名の高さ（非表示なら 0）
     let gapX: CGFloat          // 横方向の余白（タイル間 = 画面端）
     let gapY: CGFloat          // 縦方向の余白（タイル間 = 画面端）
 
     /// - gap: 最小余白 (pt)。アイコンはこの余白を確保したうえで収まる最大サイズになる
     /// - iconScale: その最大サイズに対する倍率 (0.4...1)。小さくした分は余白へ均等に配分される
-    init(size: CGSize, layout: GridLayout, showLabels: Bool, gap: Double, iconScale: Double) {
+    /// - labelSpacing: アイコンとアプリ名の間隔 (pt)
+    init(size: CGSize, layout: GridLayout, showLabels: Bool, gap: Double, iconScale: Double,
+         labelSpacing: Double) {
         let minGap = CGFloat(gap)
         let cols = CGFloat(layout.columns), rows = CGFloat(layout.rows)
         self.layout = layout
-        labelHeight = showLabels ? 18 : 0
+        labelHeight = showLabels ? GridDefaults.labelTextHeight + CGFloat(max(labelSpacing, 0)) : 0
         let byWidth = (size.width - (cols + 1) * minGap) / cols
         let byHeight = (size.height - (rows + 1) * minGap) / rows - labelHeight
         tile = max(min(byWidth, byHeight) * CGFloat(min(max(iconScale, 0.4), 1)), 10)
@@ -42,6 +44,8 @@ struct GridMetrics {
 enum GridDefaults {
     static let gap: Double = 12
     static let iconScale: Double = 1
+    static let labelSpacing: Double = 8
+    static let labelTextHeight: CGFloat = 18
 }
 
 struct GridCells<Cell: View>: View {
@@ -113,7 +117,7 @@ struct TileView: View {
                     Text(item.name)
                         .font(.caption.weight(Theme.weight(labelWeight)))
                         .lineLimit(1)
-                        .frame(width: metrics.tile, height: metrics.labelHeight)
+                        .frame(width: metrics.tile, height: metrics.labelHeight, alignment: .bottom)
                 }
             }
         } else {
@@ -132,6 +136,7 @@ struct LauncherGridView: View {
     @AppStorage("gridGap") private var gridGap = GridDefaults.gap
     @AppStorage("iconScale") private var iconScale = GridDefaults.iconScale
     @AppStorage("showGridLines") private var showGridLines = true
+    @AppStorage("labelSpacing") private var labelSpacing = GridDefaults.labelSpacing
     @State private var openGroup: LaunchItem?
     @State private var groupSlot: Int?
     @State private var highlighted: Int?
@@ -141,7 +146,7 @@ struct LauncherGridView: View {
     var body: some View {
         GeometryReader { geo in
             let metrics = GridMetrics(size: geo.size, layout: store.board.layout, showLabels: showLabels,
-                                      gap: gridGap, iconScale: iconScale)
+                                      gap: gridGap, iconScale: iconScale, labelSpacing: labelSpacing)
             ZStack {
                 if showGridLines { GridLines(metrics: metrics) }
                 GridCells(metrics: metrics) { slot in

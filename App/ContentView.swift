@@ -87,6 +87,7 @@ struct SettingsView: View {
     @AppStorage("glassIcons") private var glassIcons = false
     @AppStorage("labelWeight") private var labelWeight = Theme.defaultWeight
     @AppStorage("showGridLines") private var showGridLines = true
+    @AppStorage("labelSpacing") private var labelSpacing = GridDefaults.labelSpacing
     @AppStorage("useCustomGridColor") private var useCustomGridColor = false
     @AppStorage("gridColor") private var gridColor = Theme.defaultGrid
     @State private var working = false
@@ -171,6 +172,11 @@ struct SettingsView: View {
                     Toggle("アプリ名を表示", isOn: $showLabels)
                     Picker("アプリ名の太さ", selection: $labelWeight) {
                         ForEach(Theme.weights.indices, id: \.self) { Text(Theme.weights[$0].name).tag($0) }
+                    }
+                    .disabled(!showLabels)
+                    VStack(alignment: .leading) {
+                        Text("アイコンとアプリ名の間隔: \(Int(labelSpacing)) pt")
+                        Slider(value: $labelSpacing, in: 0...24, step: 1)
                     }
                     .disabled(!showLabels)
                     Stepper("列: \(store.board.layout.columns)", value: layoutBinding(\.columns), in: 2...5)
