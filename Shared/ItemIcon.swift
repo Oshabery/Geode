@@ -75,18 +75,30 @@ struct GlassVolume<S: Shape>: View {
 }
 
 extension View {
-    /// Liquid Glass の面を敷く。透明度の高いガラスに、屈折した縁の光・面の映り込み・落ち影を重ねる。
-    /// iOS 26 未満ではマテリアル（すりガラス）で代用。
+    /// UI 部品（ボタンなど）用の標準的な Liquid Glass。iOS 26 未満ではマテリアルで代用。
     @ViewBuilder
-    func glass(in shape: some InsettableShape, tint: Color? = nil, interactive: Bool = false,
-               rim: CGFloat = 1.5) -> some View {
-        let decorated = self
-            .overlay { GlassVolume(shape: shape) }
-            .overlay { GlassRim(shape: shape, lineWidth: rim) }
-        let shadow = shape.fill(Color.black.opacity(0.22)).blur(radius: rim * 5).offset(y: rim * 3)
+    func glass(in shape: some Shape, tint: Color? = nil, interactive: Bool = false) -> some View {
+        if #available(iOS 26.0, *) {
+            self.glassEffect(Glass.regular.tint(tint).interactive(interactive), in: shape)
+        } else {
+            self.background {
+                ZStack {
+                    shape.fill(.ultraThinMaterial)
+                    if let tint { shape.fill(tint.opacity(0.45)) }
+                }
+            }
+        }
+    }
+
+    /// アイコン専用の強調したガラス。透明度の高いガラスに、屈折した縁の光・面の映り込み・落ち影を重ねる。
+    @ViewBuilder
+    func iconGlass(size: CGFloat) -> some View {
+        let shape = iconShape(size)
+        let shadow = shape.fill(Color.black.opacity(0.22)).blur(radius: size * 0.08).offset(y: size * 0.045)
+        let decorated = self.overlay { GlassSheen(size: size) }
         if #available(iOS 26.0, *) {
             decorated
-                .glassEffect(Glass.clear.tint(tint).interactive(interactive), in: shape)
+                .glassEffect(Glass.clear, in: shape)
                 .background { shadow }
         } else {
             decorated
@@ -94,7 +106,6 @@ extension View {
                     ZStack {
                         shadow
                         shape.fill(.ultraThinMaterial)
-                        if let tint { shape.fill(tint.opacity(0.45)) }
                     }
                 }
         }
@@ -133,7 +144,7 @@ struct ItemIcon: View {
             Image(systemName: item.symbol)
                 .font(.system(size: size * 0.45, weight: .light))
                 .frame(width: size, height: size)
-                .glass(in: iconShape(size), rim: max(1, size * 0.022))
+                .iconGlass(size: size)
         } else {
             ZStack {
                 iconShape(size).fill(.tint.opacity(0.18))
