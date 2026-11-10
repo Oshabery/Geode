@@ -15,39 +15,101 @@ func iconShape(_ size: CGFloat) -> RoundedRectangle {
     RoundedRectangle(cornerRadius: size * 0.225, style: .continuous)
 }
 
+/// ガラスの縁。光が屈折して虹色に分散したような輪郭 + 内側の影で厚みを出す。
+struct GlassRim<S: InsettableShape>: View {
+    let shape: S
+    var lineWidth: CGFloat = 1.5
+
+    private var gradient: AngularGradient {
+        let blue = Color(hue: 0.62, saturation: 0.75, brightness: 1)
+        let violet = Color(hue: 0.78, saturation: 0.6, brightness: 1)
+        let warm = Color(hue: 0.08, saturation: 0.55, brightness: 1)
+        let dim = Color.white.opacity(0.06)
+        return AngularGradient(stops: [
+            .init(color: .white.opacity(0.95), location: 0.00),
+            .init(color: blue.opacity(0.9), location: 0.07),
+            .init(color: violet.opacity(0.75), location: 0.13),
+            .init(color: dim, location: 0.24),
+            .init(color: dim, location: 0.40),
+            .init(color: warm.opacity(0.85), location: 0.47),
+            .init(color: .white.opacity(0.9), location: 0.52),
+            .init(color: blue.opacity(0.9), location: 0.60),
+            .init(color: dim, location: 0.72),
+            .init(color: dim, location: 0.90),
+            .init(color: .white.opacity(0.95), location: 1.00),
+        ], center: .center, angle: .degrees(200))
+    }
+
+    var body: some View {
+        ZStack {
+            // にじんだ光（色の分散）
+            shape.strokeBorder(gradient, lineWidth: lineWidth * 2.5)
+                .blur(radius: lineWidth * 2)
+                .opacity(0.75)
+            // くっきりした縁
+            shape.strokeBorder(gradient, lineWidth: lineWidth)
+            // 縁のすぐ内側の影（厚み）
+            shape.inset(by: lineWidth)
+                .strokeBorder(Color.black.opacity(0.35), lineWidth: lineWidth)
+                .blur(radius: lineWidth)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// ガラスの面の立体感: 上部の映り込みと、下部に抜けてくる光
+struct GlassVolume<S: Shape>: View {
+    let shape: S
+
+    var body: some View {
+        shape
+            .fill(LinearGradient(stops: [
+                .init(color: .white.opacity(0.26), location: 0),
+                .init(color: .white.opacity(0), location: 0.42),
+                .init(color: .white.opacity(0), location: 0.72),
+                .init(color: .white.opacity(0.12), location: 1),
+            ], startPoint: .top, endPoint: .bottom))
+            .blendMode(.plusLighter)
+            .allowsHitTesting(false)
+    }
+}
+
 extension View {
-    /// Liquid Glass の面を敷く。iOS 26 未満ではマテリアル（すりガラス）で代用。
+    /// Liquid Glass の面を敷く。透明度の高いガラスに、屈折した縁の光・面の映り込み・落ち影を重ねる。
+    /// iOS 26 未満ではマテリアル（すりガラス）で代用。
     @ViewBuilder
-    func glass(in shape: some Shape, tint: Color? = nil, interactive: Bool = false) -> some View {
+    func glass(in shape: some InsettableShape, tint: Color? = nil, interactive: Bool = false,
+               rim: CGFloat = 1.5) -> some View {
+        let decorated = self
+            .overlay { GlassVolume(shape: shape) }
+            .overlay { GlassRim(shape: shape, lineWidth: rim) }
+        let shadow = shape.fill(Color.black.opacity(0.22)).blur(radius: rim * 5).offset(y: rim * 3)
         if #available(iOS 26.0, *) {
-            self.glassEffect(Glass.regular.tint(tint).interactive(interactive), in: shape)
+            decorated
+                .glassEffect(Glass.clear.tint(tint).interactive(interactive), in: shape)
+                .background { shadow }
         } else {
-            self.background {
-                ZStack {
-                    shape.fill(.ultraThinMaterial)
-                    if let tint { shape.fill(tint.opacity(0.45)) }
+            decorated
+                .background {
+                    ZStack {
+                        shadow
+                        shape.fill(.ultraThinMaterial)
+                        if let tint { shape.fill(tint.opacity(0.45)) }
+                    }
                 }
-            }
         }
     }
 }
 
-/// ガラス風アイコン用のハイライト（上部の映り込み + 縁の光）
+/// ガラス風アイコン用のハイライト（面の映り込み + 屈折した縁の光）
 struct GlassSheen: View {
     let size: CGFloat
 
     var body: some View {
         ZStack {
-            iconShape(size)
-                .fill(LinearGradient(colors: [.white.opacity(0.32), .white.opacity(0)],
-                                     startPoint: .top, endPoint: .center))
-                .blendMode(.plusLighter)
-            iconShape(size)
-                .strokeBorder(LinearGradient(colors: [.white.opacity(0.85), .white.opacity(0.08), .white.opacity(0.4)],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing),
-                              lineWidth: max(1, size * 0.025))
+            GlassVolume(shape: iconShape(size))
+            GlassRim(shape: iconShape(size), lineWidth: max(1, size * 0.022))
         }
-        .allowsHitTesting(false)
     }
 }
 
@@ -66,12 +128,12 @@ struct ItemIcon: View {
                 .frame(width: size, height: size)
                 .clipShape(iconShape(size))
                 .overlay { if glass { GlassSheen(size: size) } }
-                .shadow(color: .black.opacity(glass ? 0.2 : 0), radius: size * 0.06, y: size * 0.03)
+                .shadow(color: .black.opacity(glass ? 0.3 : 0), radius: size * 0.08, y: size * 0.045)
         } else if glass {
             Image(systemName: item.symbol)
                 .font(.system(size: size * 0.45, weight: .light))
                 .frame(width: size, height: size)
-                .glass(in: iconShape(size))
+                .glass(in: iconShape(size), rim: max(1, size * 0.022))
         } else {
             ZStack {
                 iconShape(size).fill(.tint.opacity(0.18))

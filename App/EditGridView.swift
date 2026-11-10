@@ -76,7 +76,7 @@ struct EditGridView: View {
                         Image(systemName: "xmark")
                             .font(.caption.bold())
                             .frame(width: 26, height: 26)
-                            .glass(in: Circle(), interactive: true)
+                            .glass(in: Circle(), interactive: true, rim: 1)
                     }
                     .offset(x: -8, y: -8)
                 }
@@ -116,7 +116,8 @@ struct EditGridView: View {
                     .font(.system(size: metrics.tile * 0.36, weight: .regular))
                     .foregroundStyle(.white)
                     .frame(width: metrics.tile, height: metrics.tile)
-                    .glass(in: iconShape(metrics.tile), tint: Self.addColor, interactive: true)
+                    .glass(in: iconShape(metrics.tile), tint: Self.addColor, interactive: true,
+                           rim: max(1, metrics.tile * 0.022))
             }
             .buttonStyle(.plain)
         }
