@@ -87,6 +87,8 @@ struct SettingsView: View {
     @AppStorage("glassIcons") private var glassIcons = false
     @AppStorage("labelWeight") private var labelWeight = Theme.defaultWeight
     @AppStorage("showGridLines") private var showGridLines = true
+    @AppStorage("useCustomGridColor") private var useCustomGridColor = false
+    @AppStorage("gridColor") private var gridColor = Theme.defaultGrid
     @State private var working = false
     @State private var message: String?
 
@@ -130,7 +132,19 @@ struct SettingsView: View {
                 } header: {
                     Text("UI の色（HSB）")
                 } footer: {
-                    Text("アプリ名、グリッド線、ボタン、シンボルのアイコンに使う色です。コードは「色相 0–360, 彩度 0–100, 明度 0–100」の順で入力します。")
+                    Text("アプリ名、ボタン、シンボルのアイコンに使う色です。コードは「色相 0–360, 彩度 0–100, 明度 0–100」の順で入力します。")
+                }
+
+                Section {
+                    Toggle("グリッド線を表示", isOn: $showGridLines)
+                    if showGridLines {
+                        Toggle("グリッド線の色を指定", isOn: $useCustomGridColor)
+                        if useCustomGridColor { HSBEditor(color: $gridColor) }
+                    }
+                } header: {
+                    Text("グリッド線の色（HSB）")
+                } footer: {
+                    Text("色の指定がオフのときは、UI の色を薄くした線になります。")
                 }
 
                 Section {
@@ -159,7 +173,6 @@ struct SettingsView: View {
                         ForEach(Theme.weights.indices, id: \.self) { Text(Theme.weights[$0].name).tag($0) }
                     }
                     .disabled(!showLabels)
-                    Toggle("グリッド線を表示", isOn: $showGridLines)
                     Stepper("列: \(store.board.layout.columns)", value: layoutBinding(\.columns), in: 2...5)
                     Stepper("行: \(store.board.layout.rows)", value: layoutBinding(\.rows), in: 3...8)
                 } header: {

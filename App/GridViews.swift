@@ -63,8 +63,18 @@ struct GridCells<Cell: View>: View {
 /// アイコンとアイコンの間（余白の中央）に引く区切り線
 struct GridLines: View {
     let metrics: GridMetrics
+    @AppStorage("useCustomGridColor") private var useCustomGridColor = false
+    @AppStorage("gridColor") private var gridColor = Theme.defaultGrid
 
     var body: some View {
+        if useCustomGridColor {
+            path.stroke(gridColor.color, lineWidth: 1).allowsHitTesting(false)
+        } else {
+            path.stroke(.tint.opacity(0.35), lineWidth: 1).allowsHitTesting(false)
+        }
+    }
+
+    private var path: Path {
         Path { p in
             let cols = metrics.layout.columns, rows = metrics.layout.rows
             let stepX = metrics.tile + metrics.gapX
@@ -82,8 +92,6 @@ struct GridLines: View {
                 p.addLine(to: CGPoint(x: width - metrics.gapX / 2, y: y))
             }
         }
-        .stroke(.tint.opacity(0.35), lineWidth: 1)
-        .allowsHitTesting(false)
     }
 }
 

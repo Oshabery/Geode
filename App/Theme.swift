@@ -31,6 +31,7 @@ struct HSBColor: RawRepresentable, Equatable {
 enum Theme {
     static let defaultBackground = HSBColor(h: 220, s: 30, b: 16)
     static let defaultTint = HSBColor(h: 185, s: 70, b: 85)
+    static let defaultGrid = HSBColor(h: 0, s: 0, b: 50)
 
     static let weights: [(name: String, weight: Font.Weight)] = [
         ("細い", .thin), ("やや細い", .light), ("標準", .regular), ("中", .medium),
