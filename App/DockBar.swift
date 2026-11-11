@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// 画面下部の 3 つのボタン（ドック）。設定 / 編集ボタンと同じ 44pt の丸いガラスボタン。
-/// - 通常モード: タップで割り当てたアクションを起動。未割り当ては何も表示しない
-/// - 編集モード: 空きは「＋」、割り当て済みはタップで編集、× で削除
+/// - 未割り当てのボタンは常に「＋」を表示し、タップでアクションを割り当てる
+/// - 通常モード: 割り当て済みのボタンはタップで起動
+/// - 編集モード: 割り当て済みのボタンはタップで編集、× で削除
 struct DockBar: View {
     @EnvironmentObject private var store: BoardStore
     let editing: Bool
@@ -57,7 +58,8 @@ struct DockBar: View {
                 }
             }
             .accessibilityLabel(item.name)
-        } else if editing {
+        } else {
+            // 未割り当て: 通常モードでも常に「＋」を表示し、タップでその場で割り当てられる
             Button {
                 target = EditorTarget(slot: index, item: LaunchItem(kind: .action, name: ""))
             } label: {
@@ -65,8 +67,6 @@ struct DockBar: View {
             }
             .glass(in: Circle(), interactive: true)
             .accessibilityLabel("ボタンにアクションを追加")
-        } else {
-            Color.clear.frame(width: 44, height: 44)
         }
     }
 }
