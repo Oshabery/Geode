@@ -30,7 +30,7 @@ fi
 
 if [ -n "$team" ]; then
   echo "DEVELOPMENT_TEAM = $team" > Local.xcconfig
-  echo "✅ Team ID: $team（$source）"
+  echo "✅ Team ID: ${team}（${source}）"
 else
   echo "⚠️  Team ID が見つかりませんでした。"
   echo "    Xcode で Geode ターゲットの Team を一度選んで保存（⌘S）し、もう一度このスクリプトを実行してください。"
