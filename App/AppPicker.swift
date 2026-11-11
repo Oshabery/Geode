@@ -6,6 +6,7 @@ struct PickedApp {
     var symbol: String
     var iconFile: String?
     var isToggle = false
+    var startsOn = false
 }
 
 /// 辞書への登録フォームの下書き

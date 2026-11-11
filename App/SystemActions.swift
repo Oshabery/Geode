@@ -87,14 +87,16 @@ struct ShortcutPreset: Identifiable, Hashable {
     let hint: String?
     /// オン / オフのスイッチとして表示するか
     var isSwitch = true
+    /// スイッチの初期状態（普段オンのもの）
+    var startsOn = false
     var id: String { title }
 
     static let all: [ShortcutPreset] = [
         .init(title: "ライト（Geode を離れても点いたまま）", symbol: "flashlight.on.fill", defaultName: "Geode ライト", hint: "懐中電灯を設定"),
         .init(title: "マナーモード（消音）", symbol: "bell.slash", defaultName: "Geode 消音モード", hint: "消音モードを設定"),
-        .init(title: "Wi-Fi", symbol: "wifi.slash", defaultName: "Geode Wi-Fi", hint: "Wi-Fi を設定"),
-        .init(title: "Bluetooth", symbol: "dot.radiowaves.left.and.right", defaultName: "Geode Bluetooth", hint: "Bluetooth を設定"),
-        .init(title: "モバイルデータ通信", symbol: "antenna.radiowaves.left.and.right", defaultName: "Geode モバイルデータ", hint: "モバイルデータ通信を設定"),
+        .init(title: "Wi-Fi", symbol: "wifi.slash", defaultName: "Geode Wi-Fi", hint: "Wi-Fi を設定", startsOn: true),
+        .init(title: "Bluetooth", symbol: "dot.radiowaves.left.and.right", defaultName: "Geode Bluetooth", hint: "Bluetooth を設定", startsOn: true),
+        .init(title: "モバイルデータ通信", symbol: "antenna.radiowaves.left.and.right", defaultName: "Geode モバイルデータ", hint: "モバイルデータ通信を設定", startsOn: true),
         .init(title: "機内モード", symbol: "airplane", defaultName: "Geode 機内モード", hint: "機内モードを設定"),
         .init(title: "低電力モード", symbol: "battery.25", defaultName: "Geode 低電力モード", hint: "低電力モードを設定"),
         .init(title: "集中モード", symbol: "moon", defaultName: "Geode 集中モード", hint: "集中モードを設定"),
@@ -200,7 +202,8 @@ struct SystemActionPicker: View {
                     Button("このアクションを使う") {
                         let title = preset.hint == nil ? trimmedName : preset.title
                         onPick(PickedApp(name: title, urlString: SystemActions.shortcutURL(trimmedName),
-                                         symbol: preset.symbol, iconFile: nil, isToggle: preset.isSwitch))
+                                         symbol: preset.symbol, iconFile: nil, isToggle: preset.isSwitch,
+                                         startsOn: preset.startsOn))
                         dismiss()
                     }
                     .disabled(trimmedName.isEmpty)

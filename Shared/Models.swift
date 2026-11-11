@@ -19,6 +19,8 @@ struct LaunchItem: Codable, Identifiable, Hashable {
     var baseColor: String? = nil
     /// オン / オフのスイッチとして表示するか（ショートカット経由の操作用。ライトは URL から自動判定）
     var isToggle: Bool? = nil
+    /// スイッチの状態がまだ記録されていないときの初期値（Wi-Fi など普段オンのもの用）
+    var toggleStartsOn: Bool? = nil
 }
 
 struct GridLayout: Codable, Hashable {

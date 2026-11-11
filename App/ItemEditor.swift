@@ -59,6 +59,7 @@ struct ItemEditor: View {
                                 item.symbol = picked.symbol
                                 item.iconFile = picked.iconFile
                                 item.isToggle = nil
+                                item.toggleStartsOn = nil
                                 if picked.urlString.isEmpty {
                                     note = "このアプリの URL スキームは辞書にありません。URL 欄に手入力してください。"
                                 }
@@ -71,6 +72,7 @@ struct ItemEditor: View {
                                 item.symbol = picked.symbol
                                 item.iconFile = nil      // 前に選んだアプリの画像が残らないように
                                 item.isToggle = picked.isToggle ? true : nil
+                                item.toggleStartsOn = picked.startsOn ? true : nil
                                 note = nil
                             }
                         }

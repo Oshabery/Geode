@@ -41,7 +41,7 @@ final class BoardStore: ObservableObject {
     func switchState(for item: LaunchItem) -> Bool? {
         guard SystemActions.isSwitch(item) else { return nil }
         if SystemActions.isTorchURL(item.urlString) { return torchOn }
-        return toggleStates[item.id.uuidString] ?? false
+        return toggleStates[item.id.uuidString] ?? (item.toggleStartsOn ?? false)
     }
 
     /// 実行せずに状態だけ直す（Geode の外で切り替えて表示がずれたとき用）
@@ -107,7 +107,7 @@ final class BoardStore: ObservableObject {
         // ショートカットが成功して戻ってきた（geode:// のみ）: 待っていたスイッチを切り替える
         if url.scheme == "geode", (url.host ?? "").isEmpty {
             if let id = pendingToggleID, let item = board.find(id) {
-                setSwitchState(item, !(toggleStates[id.uuidString] ?? false))
+                setSwitchState(item, !(switchState(for: item) ?? false))
             }
             pendingToggleID = nil
             return
