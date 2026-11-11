@@ -26,8 +26,8 @@ struct EditGridView: View {
     @State private var dragFrom: Int?
     @State private var dragOffset: CGSize = .zero
 
-    /// 空きマスの「＋」タイルの色
-    private static let addColor = Color(red: 0.255, green: 0.808, blue: 0.851)
+    /// 空きマスの「＋」タイルの色（#525253）
+    private static let addColor = Color(red: 82 / 255, green: 82 / 255, blue: 83 / 255)
 
     var body: some View {
         GeometryReader { geo in

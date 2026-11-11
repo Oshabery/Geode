@@ -176,7 +176,7 @@ struct LauncherGridView: View {
                     .onChanged { touchMoved(metrics.slot(at: $0.location)) }
                     .onEnded { touchEnded(metrics.slot(at: $0.location)) }
             )
-            .animation(.easeOut(duration: 0.12), value: openGroup?.id)
+            .animation(.easeOut(duration: 0.06), value: openGroup?.id)
             .animation(.easeOut(duration: 0.1), value: highlighted)
         }
         .onAppear(perform: openRequestedGroup)
