@@ -4,14 +4,14 @@ import UIKit
 /// iOS には「インストール済みアプリ一覧」を取得する公開 API が無いため、
 /// この辞書 + canOpenURL で「入っているか」を判定する。
 /// サードパーティのスキームを追加したら project.yml の LSApplicationQueriesSchemes にも追加すること(最大50)。
-struct CatalogApp: Identifiable, Hashable {
-    let name: String
-    let scheme: String
+struct CatalogApp: Identifiable, Hashable, Codable {
+    var name: String
+    var scheme: String               // 空 = スキーム未登録（実機一覧から取り込んだだけのアプリ）
     var bundleId: String? = nil      // App Store からアイコンを引くキー
     var iconSearch: String? = nil    // bundleId が不明なとき、この語で App Store 検索してアイコンを取る
     var symbol: String = "app"
     var system = false               // 標準アプリ: 判定せず常に候補に出す
-    var id: String { scheme }
+    var id: String { scheme.isEmpty ? "bundle:" + (bundleId ?? name) : scheme }
 }
 
 enum AppCatalog {

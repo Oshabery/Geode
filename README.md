@@ -42,6 +42,18 @@ Bundle ID は `com.oshabery.geode`、App Group は `group.com.oshabery.geode` �
 | `App/EditGridView.swift` | 編集モード |
 | `Widget/LaunchWidget.swift` | ウィジェット |
 
+## 実機のアプリ一覧を取り込む
+
+iOS はアプリ内からインストール済みアプリの一覧を取得できないため、Mac 経由で取り込みます。
+iPhone をつないでロックを解除し、次を実行してからビルドし直します。
+
+```bash
+python3 tools/import_installed_apps.py && xcodegen
+```
+
+取り込めるのはアプリ名と Bundle ID です。URL スキームは取得できないので、辞書に無いアプリは
+アプリ選択画面で「スキームを登録」（右スワイプ）から入力します。
+
 ## アプリ・スキームを増やす
 
 `App/AppCatalog.swift` に 1 行追加し、同じスキームを `project.yml` の

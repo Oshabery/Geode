@@ -59,7 +59,7 @@ final class BoardStore: ObservableObject {
             for c in item.children.values { existing.insert(c.urlString) }
         }
         var added = 0
-        for app in AppCatalog.installed() where !existing.contains(app.scheme) {
+        for app in CatalogStore.shared.detected where !existing.contains(app.scheme) {
             guard let free = (0..<board.layout.capacity).first(where: { board.slots[$0] == nil }) else { break }
             var item = LaunchItem(kind: .action, name: app.name, urlString: app.scheme, symbol: app.symbol)
             item.iconFile = await IconService.icon(for: app)
