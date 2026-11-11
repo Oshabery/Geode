@@ -33,6 +33,9 @@ Bundle ID は `com.oshabery.geode`、App Group は `group.com.oshabery.geode` �
 - **グループ**: 触れている間だけ中身が 1 レイヤー上に展開。アプリの上まで指を滑らせて離すと起動（その場や空きマスで離すとホームに戻る）
 - 左上の **歯車** で設定: 外観（自動 / ライト / ダーク）、ガラス風アイコン、背景色と UI の色（HSB）、アプリ名の太さ、グリッド線、アイコンサイズと余白、アプリ名の表示、列 2〜5・行 3〜8、検出したアプリの一括配置
 - **ウィジェット**: small（1件）/ medium（8件）/ large（16件）。長押し→編集で表示するグループを選択
+- **下部の 3 つのボタン**: 編集モードで「＋」からアクションを割り当てると、通常モードではタップで起動（未割り当ては非表示）
+- **アイコンのベース色**: アクション / グループの編集画面で、画像の無いシンボルアイコンの下地の色を HSB で指定
+- **外側の余白**: 設定の「外側の余白を別に指定」で、画面端の余白をアイコン同士の間隔とは別に固定できる
 
 ## Mac 上の Claude Code で開発する
 
@@ -45,12 +48,13 @@ Mac の Claude デスクトップアプリで Claude Code の新しいセッシ�
 
 | パス | 役割 |
 |---|---|
-| `Shared/` | モデル・App Group 保存・アイコン表示（アプリ/ウィジェット共通） |
+| `Shared/` | モデル・App Group 保存・アイコン表示・HSB カラー（アプリ/ウィジェット共通） |
 | `App/AppCatalog.swift` / `App/CatalogStore.swift` | アプリ辞書（内蔵 + ユーザー登録 + 実機一覧）と非表示の管理 |
 | `App/IconService.swift` | iTunes Search API からアイコン取得 |
 | `App/GridViews.swift` | 通常モードのグリッドとグループ階層 |
 | `App/EditGridView.swift` | 編集モード |
 | `App/ContentView.swift` / `App/Theme.swift` | 設定画面、色・文字の設定 |
+| `App/DockBar.swift` | 画面下部の 3 つのボタン |
 | `Widget/LaunchWidget.swift` | ウィジェット |
 | `tools/import_installed_apps.py` | 実機のアプリ一覧の取り込み |
 
