@@ -110,18 +110,19 @@ struct GridLines: View {
         }
     }
 
-    /// 各アイコンを同じ大きさのボックスで囲む線（外枠を含む）。アイコンは必ずボックスの中央に来る
+    /// アイコン同士を区切る線。ボックスはすべて同じ大きさで、アイコンはその中央に来る。
+    /// 一番外側の枠線は引かない
     private var path: Path {
         Path { p in
             let rect = metrics.latticeRect
             let stepX = metrics.tile + metrics.gapX
             let stepY = metrics.cellSize.height + metrics.gapY
-            for c in 0...metrics.layout.columns {
+            for c in 1..<max(metrics.layout.columns, 2) {
                 let x = rect.minX + CGFloat(c) * stepX
                 p.move(to: CGPoint(x: x, y: rect.minY))
                 p.addLine(to: CGPoint(x: x, y: rect.maxY))
             }
-            for r in 0...metrics.layout.rows {
+            for r in 1..<max(metrics.layout.rows, 2) {
                 let y = rect.minY + CGFloat(r) * stepY
                 p.move(to: CGPoint(x: rect.minX, y: y))
                 p.addLine(to: CGPoint(x: rect.maxX, y: y))
