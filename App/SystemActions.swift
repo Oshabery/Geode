@@ -35,8 +35,10 @@ enum SystemActions {
         }
     }
 
-    /// ショートカットを名前で実行する URL。実行後に Geode へ戻るよう x-success / x-error に geode:// を渡す
-    /// （geode:// は BoardStore.handle が id 無しとして無視する）
+    /// ショートカットの実行に失敗したときに戻ってくる URL（BoardStore.handle がエラーを表示する）
+    static let shortcutErrorHost = "shortcut-error"
+
+    /// ショートカットを名前で実行する URL。成功したら geode://（何もしない）、失敗したら geode://shortcut-error に戻る
     static func shortcutURL(_ name: String) -> String {
         var c = URLComponents()
         c.scheme = "shortcuts"
@@ -45,7 +47,7 @@ enum SystemActions {
         c.queryItems = [
             URLQueryItem(name: "name", value: name),
             URLQueryItem(name: "x-success", value: "geode://"),
-            URLQueryItem(name: "x-error", value: "geode://"),
+            URLQueryItem(name: "x-error", value: "geode://\(shortcutErrorHost)?name=\(name)"),
         ]
         return c.string ?? "shortcuts://"
     }

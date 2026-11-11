@@ -42,6 +42,15 @@ final class BoardStore: ObservableObject {
     }
 
     func handle(_ url: URL) {
+        // ショートカットの実行に失敗して戻ってきた
+        if url.scheme == "geode", url.host == SystemActions.shortcutErrorHost {
+            let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            let name = query.first { $0.name == "name" }?.value ?? ""
+            let detail = query.first { $0.name == "errorMessage" }?.value
+            errorMessage = "ショートカット「\(name)」を実行できませんでした。\n"
+                + (detail ?? "ショートカット App に同じ名前のショートカットがあるか確認してください。")
+            return
+        }
         guard url.scheme == "geode",
               let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let idString = comps.queryItems?.first(where: { $0.name == "id" })?.value,
