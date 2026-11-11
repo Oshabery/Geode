@@ -39,8 +39,8 @@ struct GridMetrics {
         let byHeight = (size.height - 2 * mY - (rows - 1) * gy) / rows - label
         let side = max(min(byWidth, byHeight) * scale, Self.minTile)
         tile = side
-        gapX = gx
-        gapY = gy
+        self.gapX = gx      // 引数と同名なので self. が必要
+        self.gapY = gy
         // 格子を中央に置く
         marginX = (size.width - cols * side - (cols - 1) * gx) / 2
         marginY = (size.height - rows * (side + label) - (rows - 1) * gy) / 2

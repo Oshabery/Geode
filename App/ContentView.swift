@@ -159,11 +159,11 @@ struct SettingsView: View {
                     }
                     VStack(alignment: .leading) {
                         Text("横の間隔: \(Int(gridGapX)) pt")
-                        Slider(value: $gridGapX, in: 0...100, step: 1)
+                        Slider(value: $gridGapX, in: 0...150, step: 1)
                     }
                     VStack(alignment: .leading) {
                         Text("縦の間隔: \(Int(gridGapY)) pt")
-                        Slider(value: $gridGapY, in: 0...100, step: 1)
+                        Slider(value: $gridGapY, in: 0...150, step: 1)
                     }
                     VStack(alignment: .leading) {
                         Text("外側の余白: \(Int(outerMargin)) pt")
