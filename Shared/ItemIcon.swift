@@ -92,13 +92,13 @@ extension View {
 
     /// アイコン専用の強調したガラス。透明度の高いガラスに、屈折した縁の光・面の映り込み・落ち影を重ねる。
     @ViewBuilder
-    func iconGlass(size: CGFloat) -> some View {
+    func iconGlass(size: CGFloat, tint: Color? = nil) -> some View {
         let shape = iconShape(size)
         let shadow = shape.fill(Color.black.opacity(0.22)).blur(radius: size * 0.08).offset(y: size * 0.045)
         let decorated = self.overlay { GlassSheen(size: size) }
         if #available(iOS 26.0, *) {
             decorated
-                .glassEffect(Glass.clear, in: shape)
+                .glassEffect(Glass.clear.tint(tint), in: shape)
                 .background { shadow }
         } else {
             decorated
@@ -106,6 +106,7 @@ extension View {
                     ZStack {
                         shadow
                         shape.fill(.ultraThinMaterial)
+                        if let tint { shape.fill(tint.opacity(0.6)) }
                     }
                 }
         }
@@ -140,6 +141,17 @@ struct ItemIcon: View {
                 .clipShape(iconShape(size))
                 .overlay { if glass { GlassSheen(size: size) } }
                 .shadow(color: .black.opacity(glass ? 0.3 : 0), radius: size * 0.08, y: size * 0.045)
+        } else if let base = item.baseHSB {
+            // ベース色を指定したシンボルアイコン
+            let symbol = Image(systemName: item.symbol)
+                .font(.system(size: size * 0.45, weight: .light))
+                .foregroundStyle(base.prefersDarkSymbol ? Color.black : Color.white)
+                .frame(width: size, height: size)
+            if glass {
+                symbol.iconGlass(size: size, tint: base.color)
+            } else {
+                symbol.background(iconShape(size).fill(base.color))
+            }
         } else if glass {
             Image(systemName: item.symbol)
                 .font(.system(size: size * 0.45, weight: .light))

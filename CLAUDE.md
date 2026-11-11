@@ -44,12 +44,16 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 | `App/AppPicker.swift` | アプリ選択、非表示の項目、辞書への登録フォーム |
 | `App/IconService.swift` | iTunes Search API からアイコン取得 |
 | `App/ContentView.swift` | 上部バー（歯車 / 鉛筆）と設定画面 |
-| `App/Theme.swift` | HSB カラー、文字の太さ、HSB 編集 UI |
+| `App/DockBar.swift` | 画面下部の 3 つのボタン |
+| `Shared/HSBColor.swift` | HSB カラー（アプリとウィジェット共通） |
+| `App/Theme.swift` | 色の初期値、文字の太さ、HSB 編集 UI |
 | `Widget/LaunchWidget.swift` | ウィジェット（small / medium / large） |
 
 ## 設計上の決まり
 
-- **グリッド**: スロット番号は `row * columns + column`。タイルは正方形で、タイル間の余白と画面端の余白を縦横それぞれ同じ値にする（`GridMetrics`）。当たり判定も `GridMetrics.slot(at:)` を使う
+- **グリッド**: スロット番号は `row * columns + column`。タイルは正方形。既定ではタイル間の余白と画面端の余白を縦横それぞれ同じ値にする。設定「外側の余白を別に指定」がオンのときだけ画面端を固定値にし、残りをタイル間に配る（`GridMetrics` の `marginX/Y` と `gapX/Y`）。位置・当たり判定・グリッド線はすべて `GridMetrics` の値を使う
+- **ドック**: 画面下部の 3 つのボタン（`App/DockBar.swift`）。`Board.dock`（Optional）に保存し、アクションのみ置ける。盤面全体をたどる処理は `Board.topLevelItems` を使い、ドックを漏らさない（`cleanUpIcons` がアイコン画像を消してしまうため）
+- **ベース色**: `LaunchItem.baseColor`（HSB 文字列、Optional）。画像の無いシンボルアイコンの下地に使う。`HSBColor` はウィジェットからも使うので `Shared/HSBColor.swift` に置く
 - **グループ**: 指で触れている間だけ階層を表示する。アプリのあるマスで離すと起動、グループ自身のマスや空きマスで離すとホームに戻る。階層に入るとき `.rigid` の触覚を返す
 - **保存**: 盤面は App Group の `board.json`。`Board` / `LaunchItem` に必須のフィールドを足すと既存データが読めなくなるので、足すならオプショナルにするか、設定は `@AppStorage` に置く（外観・色・サイズなどの設定はすべて `@AppStorage`）
 - **アプリ検出**: iOS はインストール済みアプリを列挙できない。`canOpenURL` で判定できるのは `project.yml` の `LSApplicationQueriesSchemes` に宣言したスキームだけで、上限は 50 件（現在 41 件）。内蔵辞書にサードパーティのスキームを足したら両方に追加する

@@ -1,42 +1,62 @@
 import SwiftUI
 
 /// グリッドの寸法計算。
-/// タイルは正方形で、タイル間の余白と画面端の余白が（縦横それぞれ）同じピクセル数になるよう配置する。
+/// タイルは正方形。外側の余白を指定しないときは、タイル間の余白と画面端の余白を（縦横それぞれ）同じにする。
+/// 指定したときは画面端をその値に固定し、残りをタイル間の余白に配分する。
 struct GridMetrics {
     let layout: GridLayout
     let tile: CGFloat          // アイコン 1 辺
     let labelHeight: CGFloat   // アイコン下の間隔 + アプリ名の高さ（非表示なら 0）
-    let gapX: CGFloat          // 横方向の余白（タイル間 = 画面端）
-    let gapY: CGFloat          // 縦方向の余白（タイル間 = 画面端）
+    let gapX: CGFloat          // 横方向のタイル間の余白
+    let gapY: CGFloat          // 縦方向のタイル間の余白
+    let marginX: CGFloat       // 左右の画面端の余白
+    let marginY: CGFloat       // 上下の画面端の余白
+    let size: CGSize
 
     /// - gap: 最小余白 (pt)。アイコンはこの余白を確保したうえで収まる最大サイズになる
     /// - iconScale: その最大サイズに対する倍率 (0.4...1)。小さくした分は余白へ均等に配分される
     /// - labelSpacing: アイコンとアプリ名の間隔 (pt)
+    /// - outerMargin: 画面端の余白 (pt)。nil ならタイル間の余白と同じにする
     init(size: CGSize, layout: GridLayout, showLabels: Bool, gap: Double, iconScale: Double,
-         labelSpacing: Double) {
+         labelSpacing: Double, outerMargin: Double?) {
         let minGap = CGFloat(gap)
         let cols = CGFloat(layout.columns), rows = CGFloat(layout.rows)
         self.layout = layout
+        self.size = size
         labelHeight = showLabels ? GridDefaults.labelTextHeight + CGFloat(max(labelSpacing, 0)) : 0
-        let byWidth = (size.width - (cols + 1) * minGap) / cols
-        let byHeight = (size.height - (rows + 1) * minGap) / rows - labelHeight
-        tile = max(min(byWidth, byHeight) * CGFloat(min(max(iconScale, 0.4), 1)), 10)
-        gapX = (size.width - cols * tile) / (cols + 1)
-        gapY = (size.height - rows * (tile + labelHeight)) / (rows + 1)
+        let scale = CGFloat(min(max(iconScale, 0.4), 1))
+        if let outerMargin {
+            let m = CGFloat(max(outerMargin, 0))
+            let byWidth = (size.width - 2 * m - (cols - 1) * minGap) / cols
+            let byHeight = (size.height - 2 * m - (rows - 1) * minGap) / rows - labelHeight
+            tile = max(min(byWidth, byHeight) * scale, 10)
+            marginX = m
+            marginY = m
+            gapX = (size.width - 2 * m - cols * tile) / max(cols - 1, 1)
+            gapY = (size.height - 2 * m - rows * (tile + labelHeight)) / max(rows - 1, 1)
+        } else {
+            let byWidth = (size.width - (cols + 1) * minGap) / cols
+            let byHeight = (size.height - (rows + 1) * minGap) / rows - labelHeight
+            tile = max(min(byWidth, byHeight) * scale, 10)
+            gapX = (size.width - cols * tile) / (cols + 1)
+            gapY = (size.height - rows * (tile + labelHeight)) / (rows + 1)
+            marginX = gapX
+            marginY = gapY
+        }
     }
 
     var cellSize: CGSize { CGSize(width: tile, height: tile + labelHeight) }
 
     func center(_ slot: Int) -> CGPoint {
         let c = CGFloat(slot % layout.columns), r = CGFloat(slot / layout.columns)
-        return CGPoint(x: gapX + c * (tile + gapX) + tile / 2,
-                       y: gapY + r * (cellSize.height + gapY) + cellSize.height / 2)
+        return CGPoint(x: marginX + c * (tile + gapX) + tile / 2,
+                       y: marginY + r * (cellSize.height + gapY) + cellSize.height / 2)
     }
 
     /// 座標 → スロット番号（余白部分は近い方のタイルに寄せる）
     func slot(at p: CGPoint) -> Int {
-        let c = Int(((p.x - gapX / 2) / (tile + gapX)).rounded(.down))
-        let r = Int(((p.y - gapY / 2) / (cellSize.height + gapY)).rounded(.down))
+        let c = Int(((p.x - marginX + gapX / 2) / (tile + gapX)).rounded(.down))
+        let r = Int(((p.y - marginY + gapY / 2) / (cellSize.height + gapY)).rounded(.down))
         return min(max(r, 0), layout.rows - 1) * layout.columns + min(max(c, 0), layout.columns - 1)
     }
 }
@@ -46,6 +66,7 @@ enum GridDefaults {
     static let iconScale: Double = 1
     static let labelSpacing: Double = 8
     static let labelTextHeight: CGFloat = 18
+    static let outerMargin: Double = 12
 }
 
 struct GridCells<Cell: View>: View {
@@ -83,17 +104,17 @@ struct GridLines: View {
             let cols = metrics.layout.columns, rows = metrics.layout.rows
             let stepX = metrics.tile + metrics.gapX
             let stepY = metrics.cellSize.height + metrics.gapY
-            let width = CGFloat(cols) * stepX + metrics.gapX
-            let height = CGFloat(rows) * stepY + metrics.gapY
+            let width = metrics.size.width, height = metrics.size.height
+            // 線はタイル間の余白の中央。端は画面端の余白の中央まで
             for c in 1..<max(cols, 2) {
-                let x = CGFloat(c) * stepX + metrics.gapX / 2
-                p.move(to: CGPoint(x: x, y: metrics.gapY / 2))
-                p.addLine(to: CGPoint(x: x, y: height - metrics.gapY / 2))
+                let x = metrics.marginX + CGFloat(c) * stepX - metrics.gapX / 2
+                p.move(to: CGPoint(x: x, y: metrics.marginY / 2))
+                p.addLine(to: CGPoint(x: x, y: height - metrics.marginY / 2))
             }
             for r in 1..<max(rows, 2) {
-                let y = CGFloat(r) * stepY + metrics.gapY / 2
-                p.move(to: CGPoint(x: metrics.gapX / 2, y: y))
-                p.addLine(to: CGPoint(x: width - metrics.gapX / 2, y: y))
+                let y = metrics.marginY + CGFloat(r) * stepY - metrics.gapY / 2
+                p.move(to: CGPoint(x: metrics.marginX / 2, y: y))
+                p.addLine(to: CGPoint(x: width - metrics.marginX / 2, y: y))
             }
         }
     }
@@ -137,6 +158,8 @@ struct LauncherGridView: View {
     @AppStorage("iconScale") private var iconScale = GridDefaults.iconScale
     @AppStorage("showGridLines") private var showGridLines = true
     @AppStorage("labelSpacing") private var labelSpacing = GridDefaults.labelSpacing
+    @AppStorage("useCustomOuterMargin") private var useCustomOuterMargin = false
+    @AppStorage("outerMargin") private var outerMargin = GridDefaults.outerMargin
     @State private var openGroup: LaunchItem?
     @State private var groupSlot: Int?
     @State private var highlighted: Int?
@@ -145,7 +168,8 @@ struct LauncherGridView: View {
     var body: some View {
         GeometryReader { geo in
             let metrics = GridMetrics(size: geo.size, layout: store.board.layout, showLabels: showLabels,
-                                      gap: gridGap, iconScale: iconScale, labelSpacing: labelSpacing)
+                                      gap: gridGap, iconScale: iconScale, labelSpacing: labelSpacing,
+                                      outerMargin: useCustomOuterMargin ? outerMargin : nil)
             ZStack {
                 if showGridLines { GridLines(metrics: metrics) }
                 GridCells(metrics: metrics) { slot in

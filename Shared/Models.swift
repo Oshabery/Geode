@@ -15,6 +15,8 @@ struct LaunchItem: Codable, Identifiable, Hashable {
     var iconFile: String? = nil
     /// スロット番号 → アイテム（group のみ使用）
     var children: [Int: LaunchItem] = [:]
+    /// シンボルアイコンのベース色（HSB の "h,s,b" 文字列）。nil なら UI の色を薄くしたもの
+    var baseColor: String? = nil
 }
 
 struct GridLayout: Codable, Hashable {
@@ -26,9 +28,16 @@ struct GridLayout: Codable, Hashable {
 struct Board: Codable {
     var layout = GridLayout()
     var slots: [Int: LaunchItem] = [:]
+    /// 画面下部の 3 つのボタン（0...2）。既存の board.json に無くても読めるよう Optional
+    var dock: [Int: LaunchItem]? = nil
+
+    static let dockCount = 3
+
+    /// グリッドとドックの全アイテム（グループの中身は含まない）
+    var topLevelItems: [LaunchItem] { Array(slots.values) + Array((dock ?? [:]).values) }
 
     func find(_ id: UUID) -> LaunchItem? {
-        for item in slots.values {
+        for item in topLevelItems {
             if item.id == id { return item }
             if let child = item.children.values.first(where: { $0.id == id }) { return child }
         }
@@ -41,7 +50,7 @@ struct Board: Codable {
 
     var referencedIconFiles: Set<String> {
         var s = Set<String>()
-        for item in slots.values {
+        for item in topLevelItems {
             if let f = item.iconFile { s.insert(f) }
             for c in item.children.values { if let f = c.iconFile { s.insert(f) } }
         }

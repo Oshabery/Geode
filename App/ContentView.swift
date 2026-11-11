@@ -56,6 +56,8 @@ struct ContentView: View {
             } else {
                 LauncherGridView()
             }
+
+            DockBar(editing: editing)
         }
         .background((useCustomBackground ? backgroundColor.color : Color(.systemBackground)).ignoresSafeArea())
         .tint(tint)
@@ -88,6 +90,8 @@ struct SettingsView: View {
     @AppStorage("labelWeight") private var labelWeight = Theme.defaultWeight
     @AppStorage("showGridLines") private var showGridLines = true
     @AppStorage("labelSpacing") private var labelSpacing = GridDefaults.labelSpacing
+    @AppStorage("useCustomOuterMargin") private var useCustomOuterMargin = false
+    @AppStorage("outerMargin") private var outerMargin = GridDefaults.outerMargin
     @AppStorage("useCustomGridColor") private var useCustomGridColor = false
     @AppStorage("gridColor") private var gridColor = Theme.defaultGrid
     @State private var working = false
@@ -157,15 +161,25 @@ struct SettingsView: View {
                         Text("余白: \(Int(gridGap)) pt")
                         Slider(value: $gridGap, in: 0...40, step: 1)
                     }
+                    Toggle("外側の余白を別に指定", isOn: $useCustomOuterMargin)
+                    if useCustomOuterMargin {
+                        VStack(alignment: .leading) {
+                            Text("外側の余白: \(Int(outerMargin)) pt")
+                            Slider(value: $outerMargin, in: 0...60, step: 1)
+                        }
+                    }
                     Button("サイズと余白を初期値に戻す") {
                         iconScale = GridDefaults.iconScale
                         gridGap = GridDefaults.gap
+                        useCustomOuterMargin = false
+                        outerMargin = GridDefaults.outerMargin
                     }
-                    .disabled(iconScale == GridDefaults.iconScale && gridGap == GridDefaults.gap)
+                    .disabled(iconScale == GridDefaults.iconScale && gridGap == GridDefaults.gap
+                              && !useCustomOuterMargin)
                 } header: {
                     Text("サイズと余白")
                 } footer: {
-                    Text("余白は、アイコン同士の間隔と画面端までの間隔の最小値です。アイコンサイズは、その余白で収まる最大サイズに対する割合です。小さくした分は余白へ均等に配分されます。")
+                    Text("余白は、アイコン同士の間隔の最小値です。外側の余白を別に指定しないときは、画面端までの間隔も同じになります。指定すると画面端はその値に固定され、余った分はアイコン同士の間隔に回ります。アイコンサイズは、収まる最大サイズに対する割合です。")
                 }
 
                 Section {

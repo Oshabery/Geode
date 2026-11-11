@@ -21,6 +21,15 @@ struct ItemEditor: View {
         "briefcase", "graduationcap", "fork.knife", "cup.and.saucer", "figure.run", "cloud.sun", "wrench.and.screwdriver", "sparkles",
     ]
 
+    private var useBaseColor: Binding<Bool> {
+        Binding(get: { item.baseColor != nil },
+                set: { item.baseColor = $0 ? (item.baseColor ?? Theme.defaultTint.rawValue) : nil })
+    }
+
+    private var baseColorValue: Binding<HSBColor> {
+        Binding(get: { item.baseHSB ?? Theme.defaultTint }, set: { item.baseColor = $0.rawValue })
+    }
+
     /// 保存して閉じる。グループ名が空のまま中身のページから完了した場合は仮の名前を付ける。
     private func save() {
         var saved = item
@@ -102,6 +111,11 @@ struct ItemEditor: View {
                     PhotosPicker("写真から選ぶ", selection: $photo, matching: .images)
                     if item.iconFile != nil {
                         Button("画像を外してシンボルに戻す", role: .destructive) { item.iconFile = nil }
+                    }
+                    Toggle("ベースの色を指定", isOn: useBaseColor)
+                        .disabled(item.iconFile != nil)
+                    if item.baseColor != nil && item.iconFile == nil {
+                        HSBEditor(color: baseColorValue)
                     }
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 8), spacing: 12) {
                         ForEach(Self.symbols, id: \.self) { s in

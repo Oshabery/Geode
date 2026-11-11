@@ -54,7 +54,7 @@ final class BoardStore: ObservableObject {
     /// 検出できたアプリを空きマスへ一括配置。追加件数を返す。
     func addDetectedApps() async -> Int {
         var existing = Set<String>()
-        for item in board.slots.values {
+        for item in board.topLevelItems {
             existing.insert(item.urlString)
             for c in item.children.values { existing.insert(c.urlString) }
         }
