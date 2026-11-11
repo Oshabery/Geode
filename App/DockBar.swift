@@ -100,6 +100,11 @@ struct DockBar: View {
                     DockIcon(item: item)
                 }
                 .glass(in: Circle(), tint: tint, interactive: true)
+                .overlay(alignment: .bottomTrailing) {
+                    if let on = store.switchState(for: item) {
+                        SwitchBadge(isOn: on, width: 20).offset(x: 5, y: 5)
+                    }
+                }
                 .accessibilityLabel(item.name)
             }
         } else if editing {

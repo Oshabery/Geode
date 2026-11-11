@@ -6,33 +6,58 @@ import AVFoundation
 /// - 消音・Wi-Fi など: iOS はアプリから直接操作できないため、ショートカット App で作ったショートカットを名前で実行する
 enum SystemActions {
     static let torchURL = "geode://torch"
+    /// ライトの状態が変わったときの通知（object は Bool）。どこから切り替えても BoardStore が受け取る
+    static let torchChanged = Notification.Name("GeodeTorchChanged")
+
+    static func isTorchURL(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == "geode" && url.host?.lowercased() == "torch"
+    }
+
+    static func isTorchURL(_ string: String) -> Bool {
+        URL(string: string.trimmingCharacters(in: .whitespacesAndNewlines)).map(isTorchURL) ?? false
+    }
+
+    /// オン / オフのスイッチとして表示するアイテムか
+    static func isSwitch(_ item: LaunchItem) -> Bool {
+        item.kind == .action && (isTorchURL(item.urlString) || item.isToggle == true)
+    }
 
     /// Geode 自身が処理する URL なら実行する。handled = false のときは通常どおり外部で開く
     @MainActor
     static func performIfBuiltIn(_ url: URL) -> (handled: Bool, error: String?) {
-        guard url.scheme?.lowercased() == "geode", url.host?.lowercased() == "torch" else {
-            return (false, nil)
-        }
-        return (true, toggleTorch())
+        guard isTorchURL(url) else { return (false, nil) }
+        return (true, toggleTorch().error)
     }
 
-    /// ライトのオン / オフを切り替える。失敗したらその理由を返す
-    static func toggleTorch() -> String? {
+    static func isTorchOn() -> Bool {
+        AVCaptureDevice.default(for: .video)?.torchMode == .on
+    }
+
+    /// ライトのオン / オフを切り替え、切り替え後の状態を返す。失敗したらその理由も返す
+    @discardableResult
+    static func toggleTorch() -> (isOn: Bool, error: String?) {
         guard let device = AVCaptureDevice.default(for: .video), device.hasTorch else {
-            return "この端末ではライトを使えません（シミュレータでは常にこの表示になります）。"
+            return (false, "この端末ではライトを使えません（シミュレータでは常にこの表示になります）。")
         }
         do {
             try device.lockForConfiguration()
-            defer { device.unlockForConfiguration() }
-            if device.torchMode == .on {
-                device.torchMode = .off
-            } else {
-                try device.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
-            }
-            return nil
         } catch {
-            return "ライトを切り替えられませんでした。\n\(error.localizedDescription)"
+            return (device.torchMode == .on, "ライトを切り替えられませんでした。\n\(error.localizedDescription)")
         }
+        var result: (isOn: Bool, error: String?) = (false, nil)
+        if device.torchMode == .on {
+            device.torchMode = .off
+        } else {
+            do {
+                try device.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
+                result = (true, nil)
+            } catch {
+                result = (false, "ライトを点けられませんでした。\n\(error.localizedDescription)")
+            }
+        }
+        device.unlockForConfiguration()
+        NotificationCenter.default.post(name: torchChanged, object: result.isOn)
+        return result
     }
 
     /// ショートカットの実行に失敗したときに戻ってくる URL（BoardStore.handle がエラーを表示する）
@@ -60,9 +85,12 @@ struct ShortcutPreset: Identifiable, Hashable {
     let defaultName: String
     /// ショートカット App で検索するアクション名の目安（iOS のバージョンや言語で違うことがある）
     let hint: String?
+    /// オン / オフのスイッチとして表示するか
+    var isSwitch = true
     var id: String { title }
 
     static let all: [ShortcutPreset] = [
+        .init(title: "ライト（Geode を離れても点いたまま）", symbol: "flashlight.on.fill", defaultName: "Geode ライト", hint: "懐中電灯を設定"),
         .init(title: "マナーモード（消音）", symbol: "bell.slash", defaultName: "Geode 消音モード", hint: "消音モードを設定"),
         .init(title: "Wi-Fi", symbol: "wifi.slash", defaultName: "Geode Wi-Fi", hint: "Wi-Fi を設定"),
         .init(title: "Bluetooth", symbol: "dot.radiowaves.left.and.right", defaultName: "Geode Bluetooth", hint: "Bluetooth を設定"),
@@ -71,9 +99,32 @@ struct ShortcutPreset: Identifiable, Hashable {
         .init(title: "低電力モード", symbol: "battery.25", defaultName: "Geode 低電力モード", hint: "低電力モードを設定"),
         .init(title: "集中モード", symbol: "moon", defaultName: "Geode 集中モード", hint: "集中モードを設定"),
         .init(title: "ダークモード", symbol: "circle.lefthalf.filled", defaultName: "Geode ダークモード", hint: "外観を設定"),
-        .init(title: "画面の明るさ", symbol: "sun.max", defaultName: "Geode 明るさ", hint: "明るさを設定"),
-        .init(title: "その他のショートカット", symbol: "square.stack.3d.up", defaultName: "", hint: nil),
+        .init(title: "画面の明るさ", symbol: "sun.max", defaultName: "Geode 明るさ", hint: "明るさを設定", isSwitch: false),
+        .init(title: "その他のショートカット", symbol: "square.stack.3d.up", defaultName: "", hint: nil, isSwitch: false),
     ]
+}
+
+/// オン / オフのスイッチ表示（アイコンの右下に重ねる）。ウィジェットと共有しないよう ItemIcon とは別にする
+struct SwitchBadge: View {
+    let isOn: Bool
+    let width: CGFloat
+
+    var body: some View {
+        let height = width * 0.6
+        Capsule()
+            .fill(isOn ? Color.green : Color(white: 0.45))
+            .frame(width: width, height: height)
+            .overlay(alignment: isOn ? .trailing : .leading) {
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: height * 0.8, height: height * 0.8)
+                    .padding(height * 0.1)
+                    .shadow(color: .black.opacity(0.25), radius: 1, y: 0.5)
+            }
+            .overlay(Capsule().stroke(Color.black.opacity(0.15), lineWidth: 0.5))
+            .animation(.snappy(duration: 0.2), value: isOn)
+            .allowsHitTesting(false)
+    }
 }
 
 /// 本体の操作を選ぶ画面（アクション編集画面から開く）
@@ -90,7 +141,7 @@ struct SystemActionPicker: View {
             Section {
                 Button {
                     onPick(PickedApp(name: "ライト", urlString: SystemActions.torchURL,
-                                     symbol: "flashlight.on.fill", iconFile: nil))
+                                     symbol: "flashlight.on.fill", iconFile: nil, isToggle: true))
                     dismiss()
                 } label: {
                     Label("ライト（オン / オフ切り替え）", systemImage: "flashlight.on.fill")
@@ -98,7 +149,7 @@ struct SystemActionPicker: View {
             } header: {
                 Text("Geode で直接実行")
             } footer: {
-                Text("Geode の画面のまま、押すたびにオン / オフが切り替わります。")
+                Text("Geode の画面のまま、押すたびにオン / オフが切り替わります。Geode を離れると消えます。点けたままにしたいときは、下の「ライト（Geode を離れても点いたまま）」を使います。")
             }
 
             Section {
@@ -149,7 +200,7 @@ struct SystemActionPicker: View {
                     Button("このアクションを使う") {
                         let title = preset.hint == nil ? trimmedName : preset.title
                         onPick(PickedApp(name: title, urlString: SystemActions.shortcutURL(trimmedName),
-                                         symbol: preset.symbol, iconFile: nil))
+                                         symbol: preset.symbol, iconFile: nil, isToggle: preset.isSwitch))
                         dismiss()
                     }
                     .disabled(trimmedName.isEmpty)

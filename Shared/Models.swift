@@ -17,6 +17,8 @@ struct LaunchItem: Codable, Identifiable, Hashable {
     var children: [Int: LaunchItem] = [:]
     /// シンボルアイコンのベース色（HSB の "h,s,b" 文字列）。nil なら UI の色を薄くしたもの
     var baseColor: String? = nil
+    /// オン / オフのスイッチとして表示するか（ショートカット経由の操作用。ライトは URL から自動判定）
+    var isToggle: Bool? = nil
 }
 
 struct GridLayout: Codable, Hashable {

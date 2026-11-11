@@ -15,9 +15,54 @@ final class BoardStore: ObservableObject {
     /// 最後に実行したショートカット名（失敗して戻ってきたときの表示用）
     private var lastShortcutName = ""
 
+    /// ライトの実際の状態（端末に 1 つなので 1 つのフラグで持つ）
+    @Published private(set) var torchOn = false
+    /// ショートカット経由のスイッチの状態（Geode の推定値）。キーは LaunchItem.id の文字列。
+    /// 盤面と分けて保存する（切り替えのたびに board.json とウィジェットを更新しないため）
+    @Published private(set) var toggleStates: [String: Bool]
+    /// ショートカットの成功通知を待っているスイッチ
+    private var pendingToggleID: UUID?
+    private static let toggleStatesKey = "toggleStates"
+
     init() {
         board = SharedStorage.loadBoard()
+        toggleStates = (UserDefaults.standard.dictionary(forKey: Self.toggleStatesKey) as? [String: Bool]) ?? [:]
         cleanUpIcons()
+        torchOn = SystemActions.isTorchOn()
+        NotificationCenter.default.addObserver(forName: SystemActions.torchChanged, object: nil, queue: .main) { [weak self] note in
+            let on = note.object as? Bool ?? false
+            Task { @MainActor in self?.torchOn = on }
+        }
+    }
+
+    // MARK: スイッチ
+
+    /// スイッチとして表示するアイテムの状態。スイッチでなければ nil
+    func switchState(for item: LaunchItem) -> Bool? {
+        guard SystemActions.isSwitch(item) else { return nil }
+        if SystemActions.isTorchURL(item.urlString) { return torchOn }
+        return toggleStates[item.id.uuidString] ?? false
+    }
+
+    /// 実行せずに状態だけ直す（Geode の外で切り替えて表示がずれたとき用）
+    func setSwitchState(_ item: LaunchItem, _ on: Bool) {
+        toggleStates[item.id.uuidString] = on
+        UserDefaults.standard.set(toggleStates, forKey: Self.toggleStatesKey)
+    }
+
+    /// ショートカット経由のスイッチ（状態を推定しているもの）の一覧
+    var estimatedSwitches: [LaunchItem] {
+        var result: [LaunchItem] = []
+        for item in board.topLevelItems {
+            result.append(item)
+            result.append(contentsOf: item.children.values)
+        }
+        return result.filter { SystemActions.isSwitch($0) && !SystemActions.isTorchURL($0.urlString) }
+    }
+
+    /// アプリが前面に戻ったときにライトの実際の状態を読み直す（Geode を離れると消えるため）
+    func refreshTorch() {
+        torchOn = SystemActions.isTorchOn()
     }
 
     // MARK: 起動
@@ -28,7 +73,12 @@ final class BoardStore: ObservableObject {
             errorMessage = "「\(item.name)」の URL が正しくありません。"
             return
         }
-        // ライトなど Geode 自身が実行する操作
+        // オン / オフのスイッチは押した瞬間にカチッとした触覚を返す
+        let isSwitch = SystemActions.isSwitch(item)
+        if isSwitch {
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 1.0)
+        }
+        // ライトなど Geode 自身が実行する操作（状態は torchChanged 通知で更新される）
         let builtIn = SystemActions.performIfBuiltIn(url)
         if builtIn.handled {
             if let error = builtIn.error { errorMessage = error }
@@ -37,10 +87,15 @@ final class BoardStore: ObservableObject {
         if url.scheme == "shortcuts" {
             lastShortcutName = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                 .queryItems?.first { $0.name == "name" }?.value ?? ""
+            // スイッチの表示は、ショートカットが成功して geode:// に戻ってきたときに切り替える
+            pendingToggleID = isSwitch ? item.id : nil
+        } else {
+            pendingToggleID = nil
         }
         UIApplication.shared.open(url, options: [:]) { [weak self] ok in
             if !ok {
                 Task { @MainActor in
+                    self?.pendingToggleID = nil
                     self?.errorMessage = "「\(item.name)」を開けませんでした。\nアプリが未インストールか、URL スキームが違う可能性があります。\n\(raw)"
                 }
             }
@@ -49,7 +104,16 @@ final class BoardStore: ObservableObject {
 
     func handle(_ url: URL) {
         // ショートカットの実行に失敗して戻ってきた
+        // ショートカットが成功して戻ってきた（geode:// のみ）: 待っていたスイッチを切り替える
+        if url.scheme == "geode", (url.host ?? "").isEmpty {
+            if let id = pendingToggleID, let item = board.find(id) {
+                setSwitchState(item, !(toggleStates[id.uuidString] ?? false))
+            }
+            pendingToggleID = nil
+            return
+        }
         if url.scheme == "geode", url.host == SystemActions.shortcutErrorHost {
+            pendingToggleID = nil
             let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let detail = query.first { $0.name == "errorMessage" }?.value
             errorMessage = "ショートカット「\(lastShortcutName)」を実行できませんでした。\n"

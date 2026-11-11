@@ -58,6 +58,7 @@ struct ItemEditor: View {
                                 item.urlString = picked.urlString
                                 item.symbol = picked.symbol
                                 item.iconFile = picked.iconFile
+                                item.isToggle = nil
                                 if picked.urlString.isEmpty {
                                     note = "このアプリの URL スキームは辞書にありません。URL 欄に手入力してください。"
                                 }
@@ -69,8 +70,14 @@ struct ItemEditor: View {
                                 item.urlString = picked.urlString
                                 item.symbol = picked.symbol
                                 item.iconFile = nil      // 前に選んだアプリの画像が残らないように
+                                item.isToggle = picked.isToggle ? true : nil
                                 note = nil
                             }
+                        }
+                        if !SystemActions.isTorchURL(item.urlString) {
+                            Toggle("オン / オフのスイッチとして表示", isOn: Binding(
+                                get: { item.isToggle == true },
+                                set: { item.isToggle = $0 ? true : nil }))
                         }
                         Button("テスト起動") {
                             if let url = URL(string: item.urlString.trimmingCharacters(in: .whitespaces)) {

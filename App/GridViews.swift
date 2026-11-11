@@ -137,6 +137,8 @@ struct TileView: View {
     let item: LaunchItem?
     let metrics: GridMetrics
     var highlighted = false
+    /// オン / オフのスイッチの状態。nil ならスイッチを表示しない（編集モードなど）
+    var switchState: Bool? = nil
     @AppStorage("glassIcons") private var glassIcons = false
     @AppStorage("labelWeight") private var labelWeight = Theme.defaultWeight
 
@@ -145,6 +147,12 @@ struct TileView: View {
             VStack(spacing: 0) {
                 ItemIcon(item: item, size: metrics.tile, glass: glassIcons)
                     .overlay(iconShape(metrics.tile).fill(Color.white.opacity(highlighted ? 0.3 : 0)))
+                    .overlay(alignment: .bottomTrailing) {
+                        if let switchState {
+                            SwitchBadge(isOn: switchState, width: max(metrics.tile * 0.38, 18))
+                                .offset(x: metrics.tile * 0.06, y: metrics.tile * 0.06)
+                        }
+                    }
                     .scaleEffect(highlighted ? 1.06 : 1)
                 if metrics.labelHeight > 0 {
                     Text(item.name)
@@ -188,7 +196,8 @@ struct LauncherGridView: View {
                 if showGridLines { GridLines(metrics: metrics) }
                 GridCells(metrics: metrics) { slot in
                     TileView(item: store.board.slots[slot], metrics: metrics,
-                             highlighted: openGroup == nil && highlighted == slot)
+                             highlighted: openGroup == nil && highlighted == slot,
+                             switchState: store.board.slots[slot].flatMap(store.switchState(for:)))
                 }
                 .foregroundStyle(.tint)
 
@@ -202,7 +211,8 @@ struct LauncherGridView: View {
                         if slot == groupSlot {
                             TileView(item: group, metrics: metrics, highlighted: true)
                         } else {
-                            TileView(item: group.children[slot], metrics: metrics, highlighted: highlighted == slot)
+                            TileView(item: group.children[slot], metrics: metrics, highlighted: highlighted == slot,
+                                     switchState: group.children[slot].flatMap(store.switchState(for:)))
                         }
                     }
                     .foregroundStyle(.white)

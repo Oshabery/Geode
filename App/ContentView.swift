@@ -29,6 +29,7 @@ struct ContentView: View {
     @AppStorage("tintColor") private var tintColor = Theme.defaultTint
     @State private var editing = false
     @State private var showSettings = false
+    @Environment(\.scenePhase) private var scenePhase
 
     private var scheme: ColorScheme? { Appearance(rawValue: appearance)?.colorScheme }
     private var tint: Color? { useCustomTint ? tintColor.color : nil }
@@ -62,6 +63,9 @@ struct ContentView: View {
         .background((useCustomBackground ? backgroundColor.color : Color(.systemBackground)).ignoresSafeArea())
         .tint(tint)
         .preferredColorScheme(scheme)
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { store.refreshTorch() }
+        }
         .sheet(isPresented: $showSettings) {
             SettingsView()
                 .environmentObject(store)
@@ -193,6 +197,20 @@ struct SettingsView: View {
                     Text("下部の 3 つのボタン")
                 } footer: {
                     Text("中央のボタンを基準に、左右のボタンをどれだけ離すかを決めます。画面の幅を超える値にしても、端で止まります。")
+                }
+
+                if !store.estimatedSwitches.isEmpty {
+                    Section {
+                        ForEach(store.estimatedSwitches) { item in
+                            Toggle(item.name, isOn: Binding(
+                                get: { store.switchState(for: item) ?? false },
+                                set: { store.setSwitchState(item, $0) }))
+                        }
+                    } header: {
+                        Text("スイッチの表示")
+                    } footer: {
+                        Text("ショートカット経由のスイッチは、Geode が状態を推定して表示しています。コントロールセンターなど Geode の外で切り替えて表示がずれたときは、ここで直せます（操作は実行されません）。")
+                    }
                 }
 
                 Section {
