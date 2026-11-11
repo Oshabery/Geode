@@ -67,7 +67,7 @@ struct DockBar: View {
                     }
                     .offset(x: dragFrom == index ? dragOffset : 0)
                     .scaleEffect(dragFrom == index ? 1.1 : 1)
-                    .contentShape(Circle())
+                    .contentShape(Rectangle())   // グリッドと同じ指定（× バッジのタップを妨げない）
                     .onTapGesture { target = EditorTarget(slot: index, item: item) }
                     .gesture(
                         DragGesture(minimumDistance: 8)
