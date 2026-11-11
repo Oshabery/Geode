@@ -7,6 +7,8 @@ struct ItemEditor: View {
     @State var item: LaunchItem
     let slot: Int
     let layout: GridLayout
+    /// 指定すると編集画面の一番下に「削除」ボタンを出す
+    var onDelete: (() -> Void)? = nil
     let onSave: (LaunchItem) -> Void
 
     @State private var photo: PhotosPickerItem?
@@ -131,6 +133,15 @@ struct ItemEditor: View {
                         }
                     }
                     .padding(.vertical, 4)
+                }
+
+                if let onDelete {
+                    Section {
+                        Button(item.kind == .group ? "このグループを削除" : "このアクションを削除", role: .destructive) {
+                            onDelete()
+                            dismiss()
+                        }
+                    }
                 }
             }
             .navigationTitle(item.kind == .group ? "グループ" : "アクション")

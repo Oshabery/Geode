@@ -5,6 +5,8 @@ enum Theme {
     static let defaultBackground = HSBColor(h: 220, s: 30, b: 16)
     static let defaultTint = HSBColor(h: 185, s: 70, b: 85)
     static let defaultGrid = HSBColor(h: 0, s: 0, b: 50)
+    /// 編集モードの「＋」（空きマス / 空きボタン）の色（#525253）
+    static let addColor = Color(red: 82 / 255, green: 82 / 255, blue: 83 / 255)
 
     static let weights: [(name: String, weight: Font.Weight)] = [
         ("細い", .thin), ("やや細い", .light), ("標準", .regular), ("中", .medium),

@@ -28,8 +28,8 @@ struct EditGridView: View {
     @State private var dragFrom: Int?
     @State private var dragOffset: CGSize = .zero
 
-    /// 空きマスの「＋」タイルの色（#525253）
-    private static let addColor = Color(red: 82 / 255, green: 82 / 255, blue: 83 / 255)
+    /// 空きマスの「＋」タイルの色
+    private static let addColor = Theme.addColor
 
     var body: some View {
         GeometryReader { geo in
@@ -61,7 +61,9 @@ struct EditGridView: View {
             }
         }
         .sheet(item: $target) { t in
-            ItemEditor(item: t.item, slot: t.slot, layout: layout) { saved in
+            // 既に置いてあるアイテムの編集時だけ、編集画面にも「削除」を出す
+            let onDelete: (() -> Void)? = slots[t.slot] == nil ? nil : { slots[t.slot] = nil }
+            ItemEditor(item: t.item, slot: t.slot, layout: layout, onDelete: onDelete) { saved in
                 slots[t.slot] = saved
             }
         }
