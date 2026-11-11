@@ -80,7 +80,8 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("appearance") private var appearance = Appearance.auto.rawValue
     @AppStorage("showLabels") private var showLabels = true
-    @AppStorage("gridGap") private var gridGap = GridDefaults.gap
+    @AppStorage("gridGap") private var gridGapX = GridDefaults.gapX
+    @AppStorage("gridGapY") private var gridGapY = GridDefaults.gapY
     @AppStorage("iconScale") private var iconScale = GridDefaults.iconScale
     @AppStorage("useCustomBackground") private var useCustomBackground = false
     @AppStorage("backgroundColor") private var backgroundColor = Theme.defaultBackground
@@ -90,7 +91,6 @@ struct SettingsView: View {
     @AppStorage("labelWeight") private var labelWeight = Theme.defaultWeight
     @AppStorage("showGridLines") private var showGridLines = true
     @AppStorage("labelSpacing") private var labelSpacing = GridDefaults.labelSpacing
-    @AppStorage("useCustomOuterMargin") private var useCustomOuterMargin = false
     @AppStorage("outerMargin") private var outerMargin = GridDefaults.outerMargin
     @AppStorage("useCustomGridColor") private var useCustomGridColor = false
     @AppStorage("gridColor") private var gridColor = Theme.defaultGrid
@@ -158,28 +158,29 @@ struct SettingsView: View {
                         Slider(value: $iconScale, in: 0.4...1, step: 0.05)
                     }
                     VStack(alignment: .leading) {
-                        Text("余白: \(Int(gridGap)) pt")
-                        Slider(value: $gridGap, in: 0...40, step: 1)
+                        Text("横の間隔: \(Int(gridGapX)) pt")
+                        Slider(value: $gridGapX, in: 0...100, step: 1)
                     }
-                    Toggle("外側の余白を別に指定", isOn: $useCustomOuterMargin)
-                    if useCustomOuterMargin {
-                        VStack(alignment: .leading) {
-                            Text("外側の余白: \(Int(outerMargin)) pt")
-                            Slider(value: $outerMargin, in: 0...60, step: 1)
-                        }
+                    VStack(alignment: .leading) {
+                        Text("縦の間隔: \(Int(gridGapY)) pt")
+                        Slider(value: $gridGapY, in: 0...100, step: 1)
+                    }
+                    VStack(alignment: .leading) {
+                        Text("外側の余白: \(Int(outerMargin)) pt")
+                        Slider(value: $outerMargin, in: 0...60, step: 1)
                     }
                     Button("サイズと余白を初期値に戻す") {
                         iconScale = GridDefaults.iconScale
-                        gridGap = GridDefaults.gap
-                        useCustomOuterMargin = false
+                        gridGapX = GridDefaults.gapX
+                        gridGapY = GridDefaults.gapY
                         outerMargin = GridDefaults.outerMargin
                     }
-                    .disabled(iconScale == GridDefaults.iconScale && gridGap == GridDefaults.gap
-                              && !useCustomOuterMargin)
+                    .disabled(iconScale == GridDefaults.iconScale && gridGapX == GridDefaults.gapX
+                              && gridGapY == GridDefaults.gapY && outerMargin == GridDefaults.outerMargin)
                 } header: {
                     Text("サイズと余白")
                 } footer: {
-                    Text("余白は、アイコン同士の間隔の最小値です。外側の余白を別に指定しないときは、画面端までの間隔も同じになります。指定すると画面端はその値に固定され、余った分はアイコン同士の間隔に回ります。アイコンサイズは、収まる最大サイズに対する割合です。")
+                    Text("アイコンは画面中央を基準に並びます。間隔は隣のアイコンとの距離で、広げるほど中央から外側へ広がります。外側の余白は、端から一番外のアイコンまで最低限あける距離です。アイコンは正方形なので、縦横のうち余裕のある方向では端までの距離が設定より広くなります。その方向の間隔を広げると端に近づきます。")
                 }
 
                 Section {

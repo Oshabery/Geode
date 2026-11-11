@@ -1,51 +1,59 @@
 import SwiftUI
 
 /// グリッドの寸法計算。
-/// タイルは正方形。外側の余白を指定しないときは、タイル間の余白と画面端の余白を（縦横それぞれ）同じにする。
-/// 指定したときは画面端をその値に固定し、残りをタイル間の余白に配分する。
+/// アイコンの格子を表示領域の中央に置き、間隔の設定どおりに中央から外側へ広げる。
+/// - 間隔 (gapX / gapY): 隣り合うアイコン同士の距離。設定値そのまま
+/// - 外側の余白: 表示領域の端から一番外のアイコンまで最低限あける距離。アイコンの最大サイズを決める
+/// アイコンは正方形なので、縦横のうち余裕のある方向では端までの距離が設定値より広くなる。
 struct GridMetrics {
     let layout: GridLayout
     let tile: CGFloat          // アイコン 1 辺
     let labelHeight: CGFloat   // アイコン下の間隔 + アプリ名の高さ（非表示なら 0）
-    let gapX: CGFloat          // 横方向のタイル間の余白
-    let gapY: CGFloat          // 縦方向のタイル間の余白
-    let marginX: CGFloat       // 左右の画面端の余白
-    let marginY: CGFloat       // 上下の画面端の余白
-    let size: CGSize
+    let gapX: CGFloat          // 横方向のアイコン同士の間隔
+    let gapY: CGFloat          // 縦方向のアイコン同士の間隔
+    let marginX: CGFloat       // 表示領域の左右端から格子までの距離（中央寄せの結果）
+    let marginY: CGFloat       // 表示領域の上下端から格子までの距離（中央寄せの結果）
 
-    /// - gap: 最小余白 (pt)。アイコンはこの余白を確保したうえで収まる最大サイズになる
-    /// - iconScale: その最大サイズに対する倍率 (0.4...1)。小さくした分は余白へ均等に配分される
+    private static let minTile: CGFloat = 24
+
+    /// - gapX / gapY: アイコン同士の間隔 (pt)
+    /// - iconScale: 収まる最大サイズに対する倍率 (0.4...1)。小さくしても間隔は変えず、格子全体が中央に縮む
     /// - labelSpacing: アイコンとアプリ名の間隔 (pt)
-    /// - outerMargin: 画面端の余白 (pt)。nil ならタイル間の余白と同じにする
-    init(size: CGSize, layout: GridLayout, showLabels: Bool, gap: Double, iconScale: Double,
-         labelSpacing: Double, outerMargin: Double?) {
-        let minGap = CGFloat(gap)
+    /// - outerMargin: 表示領域の端から最低限あける距離 (pt)
+    init(size: CGSize, layout: GridLayout, showLabels: Bool, gapX: Double, gapY: Double,
+         iconScale: Double, labelSpacing: Double, outerMargin: Double) {
         let cols = CGFloat(layout.columns), rows = CGFloat(layout.rows)
         self.layout = layout
-        self.size = size
-        labelHeight = showLabels ? GridDefaults.labelTextHeight + CGFloat(max(labelSpacing, 0)) : 0
+        let label = showLabels ? GridDefaults.labelTextHeight + CGFloat(max(labelSpacing, 0)) : 0
+        labelHeight = label
         let scale = CGFloat(min(max(iconScale, 0.4), 1))
-        if let outerMargin {
-            let m = CGFloat(max(outerMargin, 0))
-            let byWidth = (size.width - 2 * m - (cols - 1) * minGap) / cols
-            let byHeight = (size.height - 2 * m - (rows - 1) * minGap) / rows - labelHeight
-            tile = max(min(byWidth, byHeight) * scale, 10)
-            marginX = m
-            marginY = m
-            gapX = (size.width - 2 * m - cols * tile) / max(cols - 1, 1)
-            gapY = (size.height - 2 * m - rows * (tile + labelHeight)) / max(rows - 1, 1)
-        } else {
-            let byWidth = (size.width - (cols + 1) * minGap) / cols
-            let byHeight = (size.height - (rows + 1) * minGap) / rows - labelHeight
-            tile = max(min(byWidth, byHeight) * scale, 10)
-            gapX = (size.width - cols * tile) / (cols + 1)
-            gapY = (size.height - rows * (tile + labelHeight)) / (rows + 1)
-            marginX = gapX
-            marginY = gapY
-        }
+
+        // 設定値が大きすぎて格子が領域からはみ出さないよう、外側の余白 → 間隔の順に上限をかける
+        let minW = cols * Self.minTile, minH = rows * (Self.minTile + label)
+        let mX = min(CGFloat(max(outerMargin, 0)), max((size.width - minW) / 2, 0))
+        let mY = min(CGFloat(max(outerMargin, 0)), max((size.height - minH) / 2, 0))
+        let gx = min(CGFloat(max(gapX, 0)), max((size.width - 2 * mX - minW) / max(cols - 1, 1), 0))
+        let gy = min(CGFloat(max(gapY, 0)), max((size.height - 2 * mY - minH) / max(rows - 1, 1), 0))
+
+        let byWidth = (size.width - 2 * mX - (cols - 1) * gx) / cols
+        let byHeight = (size.height - 2 * mY - (rows - 1) * gy) / rows - label
+        let side = max(min(byWidth, byHeight) * scale, Self.minTile)
+        tile = side
+        gapX = gx
+        gapY = gy
+        // 格子を中央に置く
+        marginX = (size.width - cols * side - (cols - 1) * gx) / 2
+        marginY = (size.height - rows * (side + label) - (rows - 1) * gy) / 2
     }
 
     var cellSize: CGSize { CGSize(width: tile, height: tile + labelHeight) }
+
+    /// 格子全体（各アイコンの周りに間隔の半分ずつを含めた「ボックス」の集まり）
+    var latticeRect: CGRect {
+        CGRect(x: marginX - gapX / 2, y: marginY - gapY / 2,
+               width: CGFloat(layout.columns) * (tile + gapX),
+               height: CGFloat(layout.rows) * (cellSize.height + gapY))
+    }
 
     func center(_ slot: Int) -> CGPoint {
         let c = CGFloat(slot % layout.columns), r = CGFloat(slot / layout.columns)
@@ -53,16 +61,19 @@ struct GridMetrics {
                        y: marginY + r * (cellSize.height + gapY) + cellSize.height / 2)
     }
 
-    /// 座標 → スロット番号（余白部分は近い方のタイルに寄せる）
-    func slot(at p: CGPoint) -> Int {
-        let c = Int(((p.x - marginX + gapX / 2) / (tile + gapX)).rounded(.down))
-        let r = Int(((p.y - marginY + gapY / 2) / (cellSize.height + gapY)).rounded(.down))
+    /// 座標 → スロット番号。格子の外（何も無い余白）は nil
+    func slot(at p: CGPoint) -> Int? {
+        let rect = latticeRect
+        guard rect.contains(p) else { return nil }
+        let c = Int(((p.x - rect.minX) / (tile + gapX)).rounded(.down))
+        let r = Int(((p.y - rect.minY) / (cellSize.height + gapY)).rounded(.down))
         return min(max(r, 0), layout.rows - 1) * layout.columns + min(max(c, 0), layout.columns - 1)
     }
 }
 
 enum GridDefaults {
-    static let gap: Double = 12
+    static let gapX: Double = 12
+    static let gapY: Double = 12
     static let iconScale: Double = 1
     static let labelSpacing: Double = 8
     static let labelTextHeight: CGFloat = 18
@@ -99,22 +110,21 @@ struct GridLines: View {
         }
     }
 
+    /// 各アイコンを同じ大きさのボックスで囲む線（外枠を含む）。アイコンは必ずボックスの中央に来る
     private var path: Path {
         Path { p in
-            let cols = metrics.layout.columns, rows = metrics.layout.rows
+            let rect = metrics.latticeRect
             let stepX = metrics.tile + metrics.gapX
             let stepY = metrics.cellSize.height + metrics.gapY
-            let width = metrics.size.width, height = metrics.size.height
-            // 線はタイル間の余白の中央。端は画面端の余白の中央まで
-            for c in 1..<max(cols, 2) {
-                let x = metrics.marginX + CGFloat(c) * stepX - metrics.gapX / 2
-                p.move(to: CGPoint(x: x, y: metrics.marginY / 2))
-                p.addLine(to: CGPoint(x: x, y: height - metrics.marginY / 2))
+            for c in 0...metrics.layout.columns {
+                let x = rect.minX + CGFloat(c) * stepX
+                p.move(to: CGPoint(x: x, y: rect.minY))
+                p.addLine(to: CGPoint(x: x, y: rect.maxY))
             }
-            for r in 1..<max(rows, 2) {
-                let y = metrics.marginY + CGFloat(r) * stepY - metrics.gapY / 2
-                p.move(to: CGPoint(x: metrics.marginX / 2, y: y))
-                p.addLine(to: CGPoint(x: width - metrics.marginX / 2, y: y))
+            for r in 0...metrics.layout.rows {
+                let y = rect.minY + CGFloat(r) * stepY
+                p.move(to: CGPoint(x: rect.minX, y: y))
+                p.addLine(to: CGPoint(x: rect.maxX, y: y))
             }
         }
     }
@@ -154,22 +164,24 @@ struct TileView: View {
 struct LauncherGridView: View {
     @EnvironmentObject private var store: BoardStore
     @AppStorage("showLabels") private var showLabels = true
-    @AppStorage("gridGap") private var gridGap = GridDefaults.gap
+    @AppStorage("gridGap") private var gridGapX = GridDefaults.gapX
+    @AppStorage("gridGapY") private var gridGapY = GridDefaults.gapY
     @AppStorage("iconScale") private var iconScale = GridDefaults.iconScale
     @AppStorage("showGridLines") private var showGridLines = true
     @AppStorage("labelSpacing") private var labelSpacing = GridDefaults.labelSpacing
-    @AppStorage("useCustomOuterMargin") private var useCustomOuterMargin = false
     @AppStorage("outerMargin") private var outerMargin = GridDefaults.outerMargin
     @State private var openGroup: LaunchItem?
     @State private var groupSlot: Int?
     @State private var highlighted: Int?
     @State private var touchStart: Int?
+    /// 指が触れている間 true（最初のイベントの判定用。触れた場所が格子の外だと touchStart は nil になる）
+    @State private var touching = false
 
     var body: some View {
         GeometryReader { geo in
             let metrics = GridMetrics(size: geo.size, layout: store.board.layout, showLabels: showLabels,
-                                      gap: gridGap, iconScale: iconScale, labelSpacing: labelSpacing,
-                                      outerMargin: useCustomOuterMargin ? outerMargin : nil)
+                                      gapX: gridGapX, gapY: gridGapY, iconScale: iconScale,
+                                      labelSpacing: labelSpacing, outerMargin: outerMargin)
             ZStack {
                 if showGridLines { GridLines(metrics: metrics) }
                 GridCells(metrics: metrics) { slot in
@@ -207,10 +219,11 @@ struct LauncherGridView: View {
         .onChange(of: store.requestedGroup) { _, _ in openRequestedGroup() }
     }
 
-    private func touchMoved(_ slot: Int) {
-        if touchStart == nil {
+    private func touchMoved(_ slot: Int?) {
+        if !touching {
+            touching = true
             touchStart = slot
-            if openGroup == nil, let item = store.board.slots[slot], item.kind == .group {
+            if openGroup == nil, let slot, let item = store.board.slots[slot], item.kind == .group {
                 openGroup = item
                 groupSlot = slot
                 // グループ階層に入った合図: カチッとした硬めの触覚
@@ -219,20 +232,20 @@ struct LauncherGridView: View {
         }
         if highlighted != slot {
             highlighted = slot
-            if openGroup != nil, slot != groupSlot, openGroup?.children[slot] != nil {
+            if let slot, openGroup != nil, slot != groupSlot, openGroup?.children[slot] != nil {
                 UISelectionFeedbackGenerator().selectionChanged()
             }
         }
     }
 
-    private func touchEnded(_ slot: Int) {
-        defer { touchStart = nil; highlighted = nil }
+    private func touchEnded(_ slot: Int?) {
+        defer { touching = false; touchStart = nil; highlighted = nil }
         if let group = openGroup {
             // 指を離したら必ず閉じる。アプリのあるマスの上で離したときだけ起動し、
-            // グループ自身のマスや空きマスではホーム階層に戻るだけ。
-            if slot != groupSlot, let child = group.children[slot] { store.launch(child) }
+            // グループ自身のマス、空きマス、格子の外ではホーム階層に戻るだけ。
+            if let slot, slot != groupSlot, let child = group.children[slot] { store.launch(child) }
             close()
-        } else if slot == touchStart, let item = store.board.slots[slot], item.kind == .action {
+        } else if let slot, slot == touchStart, let item = store.board.slots[slot], item.kind == .action {
             store.launch(item)
         }
     }

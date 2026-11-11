@@ -17,11 +17,11 @@ struct EditGridView: View {
     var reservedItem: LaunchItem? = nil
 
     @AppStorage("showLabels") private var showLabels = true
-    @AppStorage("gridGap") private var gridGap = GridDefaults.gap
+    @AppStorage("gridGap") private var gridGapX = GridDefaults.gapX
+    @AppStorage("gridGapY") private var gridGapY = GridDefaults.gapY
     @AppStorage("iconScale") private var iconScale = GridDefaults.iconScale
     @AppStorage("showGridLines") private var showGridLines = true
     @AppStorage("labelSpacing") private var labelSpacing = GridDefaults.labelSpacing
-    @AppStorage("useCustomOuterMargin") private var useCustomOuterMargin = false
     @AppStorage("outerMargin") private var outerMargin = GridDefaults.outerMargin
     @State private var createSlot: Int?
     @State private var target: EditorTarget?
@@ -34,8 +34,8 @@ struct EditGridView: View {
     var body: some View {
         GeometryReader { geo in
             let metrics = GridMetrics(size: geo.size, layout: layout, showLabels: showLabels,
-                                      gap: gridGap, iconScale: iconScale, labelSpacing: labelSpacing,
-                                      outerMargin: useCustomOuterMargin ? outerMargin : nil)
+                                      gapX: gridGapX, gapY: gridGapY, iconScale: iconScale,
+                                      labelSpacing: labelSpacing, outerMargin: outerMargin)
             ZStack {
                 Color.clear
                 if showGridLines { GridLines(metrics: metrics) }
@@ -97,7 +97,8 @@ struct EditGridView: View {
                         .onEnded { v in
                             let to = metrics.slot(at: v.location)
                             withAnimation(.snappy) {
-                                if to != slot, to != reservedSlot {
+                                // 格子の外で離したときは元の位置のまま
+                                if let to, to != slot, to != reservedSlot {
                                     let moving = slots[slot]
                                     slots[slot] = slots[to]
                                     slots[to] = moving
