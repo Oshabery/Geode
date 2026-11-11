@@ -31,16 +31,25 @@ Bundle ID は `com.oshabery.geode`、App Group は `group.com.oshabery.geode` �
 - 左上の **歯車** で設定: 外観（自動 / ライト / ダーク）、ガラス風アイコン、背景色と UI の色（HSB）、アプリ名の太さ、グリッド線、アイコンサイズと余白、アプリ名の表示、列 2〜5・行 3〜8、検出したアプリの一括配置
 - **ウィジェット**: small（1件）/ medium（8件）/ large（16件）。長押し→編集で表示するグループを選択
 
+## Mac 上の Claude Code で開発する
+
+Mac の Claude デスクトップアプリで Claude Code の新しいセッションを開始し、作業フォルダにこのリポジトリのフォルダを選びます。
+そのセッションでは、`git pull`、`xcodegen`、ビルド、実機のアプリ一覧の取り込みまで Claude が直接実行できます。
+
+プロジェクトの経緯・構成・決まりごとは `CLAUDE.md` にまとめてあり、新しいセッションが自動で読み込みます。
+
 ## 構成
 
 | パス | 役割 |
 |---|---|
 | `Shared/` | モデル・App Group 保存・アイコン表示（アプリ/ウィジェット共通） |
-| `App/AppCatalog.swift` | 既知アプリの URL スキーム辞書と検出 |
+| `App/AppCatalog.swift` / `App/CatalogStore.swift` | アプリ辞書（内蔵 + ユーザー登録 + 実機一覧）と非表示の管理 |
 | `App/IconService.swift` | iTunes Search API からアイコン取得 |
-| `App/GridViews.swift` | 通常モードのグリッドとグループ展開 |
+| `App/GridViews.swift` | 通常モードのグリッドとグループ階層 |
 | `App/EditGridView.swift` | 編集モード |
+| `App/ContentView.swift` / `App/Theme.swift` | 設定画面、色・文字の設定 |
 | `Widget/LaunchWidget.swift` | ウィジェット |
+| `tools/import_installed_apps.py` | 実機のアプリ一覧の取り込み |
 
 ## 実機のアプリ一覧を取り込む
 
