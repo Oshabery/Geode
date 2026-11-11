@@ -8,6 +8,8 @@ final class BoardStore: ObservableObject {
         didSet {
             SharedStorage.save(board)
             WidgetCenter.shared.reloadAllTimelines()
+            // 新しく置いたオン / オフのボタンも、すぐに実際の状態で表示する
+            refreshDirectStates()
         }
     }
     /// ウィジェットからグループを開く要求
