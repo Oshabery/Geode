@@ -15,7 +15,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 ```
 
 - ファイルを追加・削除・改名したとき、`project.yml` を変えたときは `xcodegen` を再実行する
-- 実機の署名は `Local.xcconfig`（git 管理外）の `DEVELOPMENT_TEAM` から読む。無いと署名エラーになる。作り方は README の「ビルド」を参照
+- 実機の署名は `Local.xcconfig`（git 管理外）の `DEVELOPMENT_TEAM` から読む。無い・空だと Team が None になり署名エラーになる。`./tools/update.sh` が git pull、Team ID の自動検出と保存、`xcodegen` をまとめて行うので、通常はこれを使う
 - Bundle ID は `com.oshabery.geode` / `com.oshabery.geode.widget`、App Group は `group.com.oshabery.geode`。App Group は `project.yml` と `Shared/Models.swift` の `SharedStorage.appGroup` を必ず一致させる
 - 無料の Apple ID（Personal Team）で署名している。実機のアプリは 7 日で期限切れになる
 

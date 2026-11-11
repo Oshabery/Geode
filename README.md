@@ -14,11 +14,14 @@ brew install xcodegen
 cd Geode && xcodegen && open Geode.xcodeproj
 ```
 
-実機で動かす場合は、Team ID を `Local.xcconfig`（git 管理外）に書いてから `xcodegen` を実行します。
+2 回目以降は、次の 1 コマンドで「最新の取り込み → 署名の Team 設定 → プロジェクト生成」をまとめて行います。
 
+```bash
+./tools/update.sh
 ```
-DEVELOPMENT_TEAM = XXXXXXXXXX
-```
+
+Team ID は自動で探して `Local.xcconfig`（git 管理外）に保存するので、Xcode で Team を選び直す必要はありません。
+見つからないと表示された場合だけ、Xcode で Team を一度選んで保存し、もう一度実行します。
 
 Bundle ID は `com.oshabery.geode`、App Group は `group.com.oshabery.geode` です。変える場合は `project.yml` と `Shared/Models.swift` の `SharedStorage.appGroup` を揃えてください。
 
