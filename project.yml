@@ -29,6 +29,7 @@ targets:
         CFBundleDisplayName: Geode
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSCameraUsageDescription: ライトのオン / オフを切り替えるために使います。
         CFBundleURLTypes:
           - CFBundleURLName: geode
             CFBundleURLSchemes: [geode]

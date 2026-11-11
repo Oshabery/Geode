@@ -63,8 +63,22 @@ struct ItemEditor: View {
                                 }
                             }
                         }
+                        NavigationLink("本体の操作から選ぶ（ライト・消音・Wi-Fi など）") {
+                            SystemActionPicker { picked in
+                                item.name = picked.name
+                                item.urlString = picked.urlString
+                                item.symbol = picked.symbol
+                                item.iconFile = nil      // 前に選んだアプリの画像が残らないように
+                                note = nil
+                            }
+                        }
                         Button("テスト起動") {
                             if let url = URL(string: item.urlString.trimmingCharacters(in: .whitespaces)) {
+                                let builtIn = SystemActions.performIfBuiltIn(url)
+                                if builtIn.handled {
+                                    note = builtIn.error
+                                    return
+                                }
                                 UIApplication.shared.open(url, options: [:]) { ok in
                                     if !ok { note = "開けませんでした。スキームを確認してください。" }
                                 }

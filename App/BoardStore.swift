@@ -26,6 +26,12 @@ final class BoardStore: ObservableObject {
             errorMessage = "「\(item.name)」の URL が正しくありません。"
             return
         }
+        // ライトなど Geode 自身が実行する操作
+        let builtIn = SystemActions.performIfBuiltIn(url)
+        if builtIn.handled {
+            if let error = builtIn.error { errorMessage = error }
+            return
+        }
         UIApplication.shared.open(url, options: [:]) { [weak self] ok in
             if !ok {
                 Task { @MainActor in

@@ -26,6 +26,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 - `App/AppCatalog.swift` の URL スキームと Bundle ID は記憶ベース。特に Leica FOTOS、VOX、アークナイツ、エンドフィールド、ポケポケのスキームは推定値
 - `tools/import_installed_apps.py` は `xcrun devicectl` の JSON 出力形式を記憶で書いており、実行確認していない
 - ウィジェット（`Widget/LaunchWidget.swift`）の実機での見た目と動作
+- 本体の操作（`App/SystemActions.swift`）: ライトが Geode を離れても点いたままか、カメラの許可を求められるか。ショートカット App のアクション名（日本語）と消音モードのアクションの有無は記憶ベース。`x-success=geode://` で実行後に Geode へ戻るかも未確認
 
 変更したらビルドして確認すること。シミュレータでは他アプリの URL スキームをほとんど開けない（「起動エラー」になるのは正常）ので、起動の確認は実機で行う。
 
@@ -45,6 +46,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 | `App/IconService.swift` | iTunes Search API からアイコン取得 |
 | `App/ContentView.swift` | 上部バー（歯車 / 鉛筆）と設定画面 |
 | `App/DockBar.swift` | 画面下部の 3 つのボタン |
+| `App/SystemActions.swift` | 本体の操作（ライトは Geode で直接、消音・Wi-Fi などはショートカット経由） |
 | `Shared/HSBColor.swift` | HSB カラー（アプリとウィジェット共通） |
 | `App/Theme.swift` | 色の初期値、文字の太さ、HSB 編集 UI |
 | `Widget/LaunchWidget.swift` | ウィジェット（small / medium / large） |
@@ -60,6 +62,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 - **保存**: 盤面は App Group の `board.json`。`Board` / `LaunchItem` に必須のフィールドを足すと既存データが読めなくなるので、足すならオプショナルにするか、設定は `@AppStorage` に置く（外観・色・サイズなどの設定はすべて `@AppStorage`）
 - **アプリ検出**: iOS はインストール済みアプリを列挙できない。`canOpenURL` で判定できるのは `project.yml` の `LSApplicationQueriesSchemes` に宣言したスキームだけで、上限は 50 件（現在 41 件）。内蔵辞書にサードパーティのスキームを足したら両方に追加する
 - **公開リポジトリ**: `Oshabery/Geode` は public。Team ID（`Local.xcconfig`）と実機のアプリ一覧（`App/InstalledApps.json`）は git 管理外のままにし、コミットしない
+- **本体の操作**: Geode 自身が実行する操作は `geode://<操作名>` の URL で表し（例: `geode://torch`）、`SystemActions.performIfBuiltIn` を `BoardStore.launch` とテスト起動の両方から通す。消音・Wi-Fi など iOS が公開 API を持たない操作は、ショートカット App のショートカットを `shortcuts://x-callback-url/run-shortcut?name=` で実行する
 - **強調ガラス**: 虹色の縁などの強調表現（`GlassRim` / `GlassVolume`）はアプリアイコンだけに使う。ボタンなどの UI は標準の Liquid Glass
 
 ## 作業の進め方
