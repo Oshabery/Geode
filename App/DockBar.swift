@@ -2,7 +2,7 @@ import SwiftUI
 
 /// 画面下部の 3 つのボタン（ドック）。設定 / 編集ボタンと同じ 44pt の丸いガラスボタン。
 /// グリッドのアイコンと同じ操作にそろえている。
-/// - 通常モード: 割り当て済みはタップで起動。未割り当ては「＋」で、タップするとその場で割り当て
+/// - 通常モード: 割り当て済みはタップで起動。未割り当ては表示しない（位置は空けておく）
 /// - 編集モード: 未割り当ては灰色の「＋」、割り当て済みはタップで編集、× で削除、ドラッグで入れ替え
 struct DockBar: View {
     @EnvironmentObject private var store: BoardStore
@@ -102,18 +102,21 @@ struct DockBar: View {
                 .glass(in: Circle(), tint: tint, interactive: true)
                 .accessibilityLabel(item.name)
             }
-        } else {
-            // 未割り当て: 常に「＋」を表示。編集モードではグリッドの空きマスと同じ灰色
+        } else if editing {
+            // 未割り当て（編集モード）: グリッドの空きマスと同じ灰色の「＋」
             Button {
                 target = EditorTarget(slot: index, item: LaunchItem(kind: .action, name: ""))
             } label: {
                 Image(systemName: "plus")
                     .font(.title3)
-                    .foregroundStyle(editing ? Color.white : Color.accentColor)
+                    .foregroundStyle(Color.white)
                     .frame(width: Self.buttonSize, height: Self.buttonSize)
             }
-            .glass(in: Circle(), tint: editing ? Theme.addColor : nil, interactive: true)
+            .glass(in: Circle(), tint: Theme.addColor, interactive: true)
             .accessibilityLabel("ボタンにアクションを追加")
+        } else {
+            // 未割り当て（通常モード）: 表示しない。位置がずれないよう同じ大きさの空白を置く
+            Color.clear.frame(width: Self.buttonSize, height: Self.buttonSize)
         }
     }
 }
