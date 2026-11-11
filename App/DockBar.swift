@@ -7,18 +7,23 @@ import SwiftUI
 struct DockBar: View {
     @EnvironmentObject private var store: BoardStore
     let editing: Bool
+    @AppStorage("dockSpacing") private var dockSpacing = GridDefaults.dockSpacing
     @State private var target: EditorTarget?
 
     private var dock: [Int: LaunchItem] { store.board.dock ?? [:] }
 
     var body: some View {
-        HStack {
-            ForEach(0..<Board.dockCount, id: \.self) { index in
-                if index > 0 { Spacer() }
-                button(index)
+        GeometryReader { geo in
+            // 中央のボタンを基準に、左右のボタンを dockSpacing だけ離す。画面からはみ出さないよう上限をかける
+            let count = CGFloat(Board.dockCount)
+            let limit = max((geo.size.width - 32 - count * 44) / max(count - 1, 1), 0)
+            HStack(spacing: min(CGFloat(max(dockSpacing, 0)), limit)) {
+                ForEach(0..<Board.dockCount, id: \.self) { index in
+                    button(index)
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
-        .padding(.horizontal, 16)
         .frame(height: 56)
         .sheet(item: $target) { t in
             ItemEditor(item: t.item, slot: t.slot, layout: store.board.layout) { saved in

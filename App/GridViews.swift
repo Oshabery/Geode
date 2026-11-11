@@ -78,6 +78,7 @@ enum GridDefaults {
     static let labelSpacing: Double = 8
     static let labelTextHeight: CGFloat = 18
     static let outerMargin: Double = 12
+    static let dockSpacing: Double = 48
 }
 
 struct GridCells<Cell: View>: View {

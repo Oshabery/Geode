@@ -92,6 +92,7 @@ struct SettingsView: View {
     @AppStorage("showGridLines") private var showGridLines = true
     @AppStorage("labelSpacing") private var labelSpacing = GridDefaults.labelSpacing
     @AppStorage("outerMargin") private var outerMargin = GridDefaults.outerMargin
+    @AppStorage("dockSpacing") private var dockSpacing = GridDefaults.dockSpacing
     @AppStorage("useCustomGridColor") private var useCustomGridColor = false
     @AppStorage("gridColor") private var gridColor = Theme.defaultGrid
     @State private var working = false
@@ -181,6 +182,17 @@ struct SettingsView: View {
                     Text("サイズと余白")
                 } footer: {
                     Text("アイコンは画面中央を基準に並びます。間隔は隣のアイコンとの距離で、広げるほど中央から外側へ広がります。外側の余白は、端から一番外のアイコンまで最低限あける距離です。アイコンは正方形なので、縦横のうち余裕のある方向では端までの距離が設定より広くなります。その方向の間隔を広げると端に近づきます。")
+                }
+
+                Section {
+                    VStack(alignment: .leading) {
+                        Text("ボタンの間隔: \(Int(dockSpacing)) pt")
+                        Slider(value: $dockSpacing, in: 0...150, step: 1)
+                    }
+                } header: {
+                    Text("下部の 3 つのボタン")
+                } footer: {
+                    Text("中央のボタンを基準に、左右のボタンをどれだけ離すかを決めます。画面の幅を超える値にしても、端で止まります。")
                 }
 
                 Section {
