@@ -128,8 +128,8 @@ struct TileView: View {
 
 /// 通常モード。
 /// - アクション: タップで URL スキームを開く
-/// - グループ: 触れた瞬間に 1 レイヤー上へ中身を展開。指を滑らせて離すと起動。
-///   その場で離すと展開したままになり、次のタップで選択。
+/// - グループ: 触れている間だけ 1 レイヤー上へ中身を展開。アプリの上まで指を滑らせて離すと起動。
+///   その場や空きマスで離すとホーム階層に戻る。
 struct LauncherGridView: View {
     @EnvironmentObject private var store: BoardStore
     @AppStorage("showLabels") private var showLabels = true
@@ -141,7 +141,6 @@ struct LauncherGridView: View {
     @State private var groupSlot: Int?
     @State private var highlighted: Int?
     @State private var touchStart: Int?
-    @State private var openedThisTouch = false
 
     var body: some View {
         GeometryReader { geo in
@@ -187,12 +186,11 @@ struct LauncherGridView: View {
     private func touchMoved(_ slot: Int) {
         if touchStart == nil {
             touchStart = slot
-            openedThisTouch = false
             if openGroup == nil, let item = store.board.slots[slot], item.kind == .group {
                 openGroup = item
                 groupSlot = slot
-                openedThisTouch = true
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                // グループ階層に入った合図: カチッとした硬めの触覚
+                UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 1.0)
             }
         }
         if highlighted != slot {
@@ -206,12 +204,10 @@ struct LauncherGridView: View {
     private func touchEnded(_ slot: Int) {
         defer { touchStart = nil; highlighted = nil }
         if let group = openGroup {
-            if slot == groupSlot {
-                if !openedThisTouch { close() }      // 展開中にグループをもう一度タップ → 閉じる
-            } else {
-                if let child = group.children[slot] { store.launch(child) }
-                close()
-            }
+            // 指を離したら必ず閉じる。アプリのあるマスの上で離したときだけ起動し、
+            // グループ自身のマスや空きマスではホーム階層に戻るだけ。
+            if slot != groupSlot, let child = group.children[slot] { store.launch(child) }
+            close()
         } else if slot == touchStart, let item = store.board.slots[slot], item.kind == .action {
             store.launch(item)
         }
