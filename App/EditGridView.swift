@@ -22,6 +22,7 @@ struct EditGridView: View {
     @AppStorage("iconScale") private var iconScale = GridDefaults.iconScale
     @AppStorage("showGridLines") private var showGridLines = true
     @AppStorage("labelSpacing") private var labelSpacing = GridDefaults.labelSpacing
+    @AppStorage("uiStyle") private var uiStyle = UIStyle.standard.rawValue
     @AppStorage("outerMargin") private var outerMargin = GridDefaults.outerMargin
     @State private var createSlot: Int?
     @State private var target: EditorTarget?
@@ -82,7 +83,7 @@ struct EditGridView: View {
                         Image(systemName: "xmark")
                             .font(.caption.bold())
                             .frame(width: 26, height: 26)
-                            .glass(in: Circle(), interactive: true)
+                            .styledCircleGlass(interactive: true)
                     }
                     .offset(x: -8, y: -8)
                 }
@@ -119,11 +120,17 @@ struct EditGridView: View {
                     target = EditorTarget(slot: slot, item: LaunchItem(kind: .action, name: ""))
                 }
             } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: metrics.tile * 0.36, weight: .regular))
-                    .foregroundStyle(.white)
-                    .frame(width: metrics.tile, height: metrics.tile)
-                    .glass(in: iconShape(metrics.tile), tint: Self.addColor, interactive: true)
+                if uiStyle == UIStyle.glow.rawValue {
+                    // グロー: 暗いガラスのタイルに銀色の＋
+                    GlowTileBackground(size: metrics.tile, dim: true)
+                        .overlay { GlowSymbol(name: "plus", size: metrics.tile * 0.85) }
+                } else {
+                    Image(systemName: "plus")
+                        .font(.system(size: metrics.tile * 0.36, weight: .regular))
+                        .foregroundStyle(.white)
+                        .frame(width: metrics.tile, height: metrics.tile)
+                        .glass(in: iconShape(metrics.tile), tint: Self.addColor, interactive: true)
+                }
             }
             .buttonStyle(.plain)
         }

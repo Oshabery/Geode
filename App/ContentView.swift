@@ -27,11 +27,14 @@ struct ContentView: View {
     @AppStorage("backgroundColor") private var backgroundColor = Theme.defaultBackground
     @AppStorage("useCustomTint") private var useCustomTint = false
     @AppStorage("tintColor") private var tintColor = Theme.defaultTint
+    @AppStorage("uiStyle") private var uiStyle = UIStyle.standard.rawValue
     @State private var editing = false
     @State private var showSettings = false
     @Environment(\.scenePhase) private var scenePhase
 
-    private var scheme: ColorScheme? { Appearance(rawValue: appearance)?.colorScheme }
+    private var isGlow: Bool { uiStyle == UIStyle.glow.rawValue }
+    /// グローは暗い画面専用。保存している外観モードは書き換えず、表示のときだけダークにする
+    private var scheme: ColorScheme? { isGlow ? .dark : Appearance(rawValue: appearance)?.colorScheme }
     private var tint: Color? { useCustomTint ? tintColor.color : nil }
 
     var body: some View {
@@ -40,13 +43,13 @@ struct ContentView: View {
                 Button { showSettings = true } label: {
                     Image(systemName: "gearshape").font(.title3).frame(width: 44, height: 44)
                 }
-                .glass(in: Circle(), interactive: true)
+                .styledCircleGlass(interactive: true)
                 .accessibilityLabel("設定")
                 Spacer()
                 Button { editing.toggle() } label: {
                     Image(systemName: editing ? "checkmark" : "pencil").font(.title3).frame(width: 44, height: 44)
                 }
-                .glass(in: Circle(), tint: editing ? tint ?? .accentColor : nil, interactive: true)
+                .styledCircleGlass(tint: editing ? tint ?? .accentColor : nil, interactive: true)
                 .accessibilityLabel(editing ? "編集を完了" : "編集")
             }
             .padding(.horizontal, 16)
@@ -60,7 +63,13 @@ struct ContentView: View {
 
             DockBar(editing: editing)
         }
-        .background((useCustomBackground ? backgroundColor.color : Color(.systemBackground)).ignoresSafeArea())
+        .background {
+            if isGlow {
+                GlowBackground()
+            } else {
+                (useCustomBackground ? backgroundColor.color : Color(.systemBackground)).ignoresSafeArea()
+            }
+        }
         .tint(tint)
         .preferredColorScheme(scheme)
         .onChange(of: scenePhase) { _, phase in
@@ -83,6 +92,7 @@ struct SettingsView: View {
     @EnvironmentObject private var store: BoardStore
     @Environment(\.dismiss) private var dismiss
     @AppStorage("appearance") private var appearance = Appearance.auto.rawValue
+    @AppStorage("uiStyle") private var uiStyle = UIStyle.standard.rawValue
     @AppStorage("showLabels") private var showLabels = true
     @AppStorage("gridGap") private var gridGapX = GridDefaults.gapX
     @AppStorage("gridGapY") private var gridGapY = GridDefaults.gapY
@@ -119,12 +129,24 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("外観") {
+                Section {
+                    Picker("デザイン", selection: $uiStyle) {
+                        ForEach(UIStyle.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.segmented)
                     Picker("モード", selection: $appearance) {
                         ForEach(Appearance.allCases) { Text($0.title).tag($0.rawValue) }
                     }
                     .pickerStyle(.segmented)
+                    .disabled(uiStyle == UIStyle.glow.rawValue)
                     Toggle("アイコンをガラス風にする", isOn: $glassIcons)
+                        .disabled(uiStyle == UIStyle.glow.rawValue)
+                } header: {
+                    Text("外観")
+                } footer: {
+                    if uiStyle == UIStyle.glow.rawValue {
+                        Text("グローは黒地に青い光のデザインです。暗い画面専用のため、モード・ガラス風アイコン・背景色は使われません（設定は残っていて、「標準」に戻すと元どおりになります）。")
+                    }
                 }
 
                 Section {
@@ -135,6 +157,7 @@ struct SettingsView: View {
                 } footer: {
                     Text("オフのときは外観モードに合わせた白 / 黒になります。")
                 }
+                .disabled(uiStyle == UIStyle.glow.rawValue)
 
                 Section {
                     Toggle("UI の色を指定", isOn: $useCustomTint)

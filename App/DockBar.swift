@@ -59,7 +59,7 @@ struct DockBar: View {
                 // 編集モード: グリッドのアイコンと同じく、タップで編集・× で削除・ドラッグで入れ替え
                 DockIcon(item: item)
                     .foregroundStyle(.tint)
-                    .glass(in: Circle(), tint: tint)
+                    .styledCircleGlass(tint: tint)
                     .overlay(alignment: .topLeading) {
                         Button {
                             setDock(index, nil)
@@ -67,7 +67,7 @@ struct DockBar: View {
                             Image(systemName: "xmark")
                                 .font(.system(size: 10, weight: .bold))
                                 .frame(width: 22, height: 22)
-                                .glass(in: Circle(), interactive: true)
+                                .styledCircleGlass(interactive: true)
                         }
                         .offset(x: -8, y: -8)
                     }
@@ -106,7 +106,7 @@ struct DockBar: View {
                 } label: {
                     DockIcon(item: item, isOn: on)
                 }
-                .glass(in: Circle(), tint: glassTint(item, isOn: on), interactive: true)
+                .styledCircleGlass(tint: glassTint(item, isOn: on), interactive: true)
                 .accessibilityLabel(item.name)
             }
         } else if editing {
@@ -119,7 +119,7 @@ struct DockBar: View {
                     .foregroundStyle(Color.white)
                     .frame(width: Self.buttonSize, height: Self.buttonSize)
             }
-            .glass(in: Circle(), tint: Theme.addColor, interactive: true)
+            .styledCircleGlass(tint: Theme.addColor, interactive: true)
             .accessibilityLabel("ボタンにアクションを追加")
         } else {
             // 未割り当て（通常モード）: 表示しない。位置がずれないよう同じ大きさの空白を置く

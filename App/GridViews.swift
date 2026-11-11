@@ -141,23 +141,39 @@ struct TileView: View {
     var switchState: Bool? = nil
     @AppStorage("glassIcons") private var glassIcons = false
     @AppStorage("labelWeight") private var labelWeight = Theme.defaultWeight
+    @AppStorage("uiStyle") private var uiStyle = UIStyle.standard.rawValue
 
     var body: some View {
         if let item {
+            let isGlow = uiStyle == UIStyle.glow.rawValue
             VStack(spacing: 0) {
-                ItemIcon(item: item, size: metrics.tile, glass: glassIcons, isOn: switchState ?? false)
-                    .overlay(iconShape(metrics.tile).fill(Color.white.opacity(highlighted ? 0.3 : 0)))
-                    .scaleEffect(highlighted ? 1.06 : 1)
+                Group {
+                    if isGlow {
+                        GlowIcon(item: item, size: metrics.tile, isOn: switchState ?? false)
+                    } else {
+                        ItemIcon(item: item, size: metrics.tile, glass: glassIcons, isOn: switchState ?? false)
+                    }
+                }
+                .overlay(iconShape(metrics.tile).fill(Color.white.opacity(highlighted ? 0.3 : 0)))
+                .scaleEffect(highlighted ? 1.06 : 1)
                 if metrics.labelHeight > 0 {
-                    Text(item.name)
-                        .font(.caption.weight(Theme.weight(labelWeight)))
-                        .lineLimit(1)
-                        .frame(width: metrics.tile, height: metrics.labelHeight, alignment: .bottom)
+                    if isGlow {
+                        label(item).foregroundStyle(Color.white.opacity(0.85))
+                    } else {
+                        label(item)
+                    }
                 }
             }
         } else {
             Color.clear
         }
+    }
+
+    private func label(_ item: LaunchItem) -> some View {
+        Text(item.name)
+            .font(.caption.weight(Theme.weight(labelWeight)))
+            .lineLimit(1)
+            .frame(width: metrics.tile, height: metrics.labelHeight, alignment: .bottom)
     }
 }
 

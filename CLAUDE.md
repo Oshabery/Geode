@@ -48,6 +48,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 | `App/DockBar.swift` | 画面下部の 3 つのボタン |
 | `App/SystemActions.swift` | 本体の操作（ライト・明るさ・ミュージックなどは Geode で直接、消音・Wi-Fi などはショートカット経由）と選択画面 |
 | `Shared/HSBColor.swift` | HSB カラー（アプリとウィジェット共通） |
+| `App/GlowStyle.swift` | 2 つ目のデザイン「グロー」（黒地に青い光、すりガラスのタイル、虹色の縁）の描画 |
 | `App/Theme.swift` | 色の初期値、文字の太さ、HSB 編集 UI |
 | `Widget/LaunchWidget.swift` | ウィジェット（small / medium / large） |
 
@@ -65,6 +66,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 - **実機で確認済み**: Geode で直接点けたライトは Geode を離れると消える（そのためショートカット経由のライトも用意）。ライトの使用でカメラの許可は求められない。ショートカット実行後は `x-success=geode://` で Geode に戻る
 - **スイッチ**: オン / オフの操作は、オンの間アイコンをネガポジ反転して示す（シンボルは記号と下地の色を入れ替え、画像は色を反転。小さなスイッチ表示はユーザーの指定でやめた）。押すと `.rigid` の触覚を返す（`BoardStore.launch` だけで行う）。Geode で直接の操作（`DirectKind.isSwitch`）は URL から判定し、実際の状態を読む（`directActionPerformed` 通知、前面復帰時、ミュージックの再生状態通知で `refreshDirectStates`）。ショートカット経由は `isToggle == true` で、状態を読めないので推定値。`geode://` への成功の戻りで切り替え、設定画面で手動補正できる。推定値は `UserDefaults` の `toggleStates`（盤面とは別）
 - **本体の操作**: Geode 自身が実行する操作は `geode://<操作名>` の URL で表し（`DirectKind`: torch / brightness / awake / music-playpause / music-next / music-previous / copy?text=）、知らない操作名はエラーにする。電話・メッセージ・メール・FaceTime・Web・経路は通常の URL（tel: など）を組み立てる。`SystemActions.performIfBuiltIn` を `BoardStore.launch` とテスト起動の両方から通す。消音・Wi-Fi など iOS が公開 API を持たない操作は、ショートカット App のショートカットを `shortcuts://x-callback-url/run-shortcut?name=` で実行する
+- **デザイン**: 設定の「デザイン」（`@AppStorage("uiStyle")`）で「標準」と「グロー」を切り替える。標準を選んでいる間はこれまでの見た目を一切変えないこと（ユーザーの条件。グローの描画は `App/GlowStyle.swift` に置き、各所は `if/else` で分岐）。グローは表示時だけダーク固定にし、保存済みの外観・背景色・ガラス風アイコンの設定は書き換えない。グローのタイルではぼかしと影を使わない（グループ表示を重くしないため）。導入前の状態は git タグ `design-standard`
 - **強調ガラス**: 虹色の縁などの強調表現（`GlassRim` / `GlassVolume`）はアプリアイコンだけに使う。ボタンなどの UI は標準の Liquid Glass
 
 ## 作業の進め方
