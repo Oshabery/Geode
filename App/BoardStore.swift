@@ -12,6 +12,8 @@ final class BoardStore: ObservableObject {
     /// ウィジェットからグループを開く要求
     @Published var requestedGroup: UUID?
     @Published var errorMessage: String?
+    /// 最後に実行したショートカット名（失敗して戻ってきたときの表示用）
+    private var lastShortcutName = ""
 
     init() {
         board = SharedStorage.loadBoard()
@@ -32,6 +34,10 @@ final class BoardStore: ObservableObject {
             if let error = builtIn.error { errorMessage = error }
             return
         }
+        if url.scheme == "shortcuts" {
+            lastShortcutName = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "name" }?.value ?? ""
+        }
         UIApplication.shared.open(url, options: [:]) { [weak self] ok in
             if !ok {
                 Task { @MainActor in
@@ -45,9 +51,8 @@ final class BoardStore: ObservableObject {
         // ショートカットの実行に失敗して戻ってきた
         if url.scheme == "geode", url.host == SystemActions.shortcutErrorHost {
             let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-            let name = query.first { $0.name == "name" }?.value ?? ""
             let detail = query.first { $0.name == "errorMessage" }?.value
-            errorMessage = "ショートカット「\(name)」を実行できませんでした。\n"
+            errorMessage = "ショートカット「\(lastShortcutName)」を実行できませんでした。\n"
                 + (detail ?? "ショートカット App に同じ名前のショートカットがあるか確認してください。")
             return
         }

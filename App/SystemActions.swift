@@ -47,7 +47,7 @@ enum SystemActions {
         c.queryItems = [
             URLQueryItem(name: "name", value: name),
             URLQueryItem(name: "x-success", value: "geode://"),
-            URLQueryItem(name: "x-error", value: "geode://\(shortcutErrorHost)?name=\(name)"),
+            URLQueryItem(name: "x-error", value: "geode://\(shortcutErrorHost)"),
         ]
         return c.string ?? "shortcuts://"
     }
