@@ -45,6 +45,12 @@ struct DockBar: View {
         }
     }
 
+    /// ボタンのガラスに付ける色。ベース色のシンボルはオンで下地と記号の色を入れ替える
+    private func glassTint(_ item: LaunchItem, isOn: Bool) -> Color? {
+        guard item.iconFile == nil, let base = item.baseHSB else { return nil }
+        return isOn ? (base.prefersDarkSymbol ? Color.black : Color.white) : base.color
+    }
+
     @ViewBuilder
     private func button(_ index: Int, spacing: CGFloat) -> some View {
         if let item = dock[index] {
@@ -94,17 +100,13 @@ struct DockBar: View {
                     )
                     .accessibilityLabel(item.name)
             } else {
+                let on = store.switchState(for: item) ?? false
                 Button {
                     store.launch(item)
                 } label: {
-                    DockIcon(item: item)
+                    DockIcon(item: item, isOn: on)
                 }
-                .glass(in: Circle(), tint: tint, interactive: true)
-                .overlay(alignment: .bottomTrailing) {
-                    if let on = store.switchState(for: item) {
-                        SwitchBadge(isOn: on, width: 20).offset(x: 5, y: 5)
-                    }
-                }
+                .glass(in: Circle(), tint: glassTint(item, isOn: on), interactive: true)
                 .accessibilityLabel(item.name)
             }
         } else if editing {
@@ -129,20 +131,31 @@ struct DockBar: View {
 /// ドックボタンの中身: アイコン画像があれば丸く切り抜いて表示、無ければシンボル
 private struct DockIcon: View {
     let item: LaunchItem
+    var isOn = false
 
     var body: some View {
         if let file = item.iconFile, let img = loadIconImage(file) {
-            Image(uiImage: img)
+            let picture = Image(uiImage: img)
                 .resizable()
                 .scaledToFill()
                 .frame(width: 36, height: 36)
                 .clipShape(Circle())
-                .frame(width: 44, height: 44)
+            Group {
+                if isOn { picture.colorInvert() } else { picture }
+            }
+            .frame(width: 44, height: 44)
         } else if let base = item.baseHSB {
+            // 下地の色はボタンのガラスに付ける（DockBar.glassTint）。ここでは記号の色だけ
             Image(systemName: item.symbol)
                 .font(.title3)
-                .foregroundStyle(base.prefersDarkSymbol ? Color.black : Color.white)
+                .foregroundStyle(isOn ? base.color : (base.prefersDarkSymbol ? Color.black : Color.white))
                 .frame(width: 44, height: 44)
+        } else if isOn {
+            Image(systemName: item.symbol)
+                .font(.title3)
+                .foregroundStyle(Color.white)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(.tint))
         } else {
             Image(systemName: item.symbol)
                 .font(.title3)

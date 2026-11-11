@@ -1,63 +1,144 @@
 import SwiftUI
 import AVFoundation
+import MediaPlayer
+
+/// Geode 自身が実行する操作。URL は geode://<rawValue>
+enum DirectKind: String, CaseIterable {
+    case torch
+    case brightness
+    case awake
+    case musicPlayPause = "music-playpause"
+    case musicNext = "music-next"
+    case musicPrevious = "music-previous"
+    case copy
+
+    /// オン / オフの状態を読めて、ネガポジ反転で表示するもの
+    var isSwitch: Bool {
+        switch self {
+        case .torch, .brightness, .awake, .musicPlayPause: return true
+        default: return false
+        }
+    }
+}
 
 /// アプリ起動以外の「本体の操作」。
-/// - ライト: Geode 自身が切り替える（URL は geode://torch）
+/// - Geode で直接: ライト、画面の明るさ、スリープさせない、ミュージックの操作、テキストのコピー
 /// - 消音・Wi-Fi など: iOS はアプリから直接操作できないため、ショートカット App で作ったショートカットを名前で実行する
 enum SystemActions {
     static let torchURL = "geode://torch"
-    /// ライトの状態が変わったときの通知（object は Bool）。どこから切り替えても BoardStore が受け取る
-    static let torchChanged = Notification.Name("GeodeTorchChanged")
+    /// Geode 自身の操作を実行したときの通知。どこから実行しても BoardStore が状態を読み直す
+    static let directActionPerformed = Notification.Name("GeodeDirectActionPerformed")
+    private static let brightnessBeforeBoostKey = "brightnessBeforeBoost"
 
-    static func isTorchURL(_ url: URL) -> Bool {
-        url.scheme?.lowercased() == "geode" && url.host?.lowercased() == "torch"
+    static func url(_ kind: DirectKind) -> String { "geode://\(kind.rawValue)" }
+
+    /// geode:// の URL のうち、操作を表すもの（ウィジェットの run とショートカットの戻りは除く）
+    static func isGeodeActionURL(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "geode", let host = url.host?.lowercased(), !host.isEmpty else { return false }
+        return host != "run" && host != shortcutErrorHost
     }
 
-    static func isTorchURL(_ string: String) -> Bool {
-        URL(string: string.trimmingCharacters(in: .whitespacesAndNewlines)).map(isTorchURL) ?? false
+    static func directKind(_ url: URL) -> DirectKind? {
+        guard isGeodeActionURL(url), let host = url.host?.lowercased() else { return nil }
+        return DirectKind(rawValue: host)
     }
 
-    /// オン / オフのスイッチとして表示するアイテムか
+    static func directKind(_ string: String) -> DirectKind? {
+        URL(string: string.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap(directKind)
+    }
+
+    static func isTorchURL(_ string: String) -> Bool { directKind(string) == .torch }
+
+    /// オン / オフを表示するアイテムか（Geode の操作は種類で、ショートカット経由は isToggle で決まる）
     static func isSwitch(_ item: LaunchItem) -> Bool {
-        item.kind == .action && (isTorchURL(item.urlString) || item.isToggle == true)
+        guard item.kind == .action else { return false }
+        if let kind = directKind(item.urlString) { return kind.isSwitch }
+        return item.isToggle == true
+    }
+
+    /// 実際の状態を読む。読めないものは nil
+    @MainActor
+    static func readState(_ kind: DirectKind) -> Bool? {
+        switch kind {
+        case .torch: return AVCaptureDevice.default(for: .video)?.torchMode == .on
+        case .brightness: return UIScreen.main.brightness >= 0.99
+        case .awake: return UIApplication.shared.isIdleTimerDisabled
+        case .musicPlayPause: return MPMusicPlayerController.systemMusicPlayer.playbackState == .playing
+        default: return nil
+        }
     }
 
     /// Geode 自身が処理する URL なら実行する。handled = false のときは通常どおり外部で開く
     @MainActor
     static func performIfBuiltIn(_ url: URL) -> (handled: Bool, error: String?) {
-        guard isTorchURL(url) else { return (false, nil) }
-        return (true, toggleTorch().error)
+        guard isGeodeActionURL(url) else { return (false, nil) }
+        guard let kind = directKind(url) else {
+            return (true, "Geode が知らない操作です。\n\(url.absoluteString)")
+        }
+        let error = perform(kind, url: url)
+        NotificationCenter.default.post(name: directActionPerformed, object: nil)
+        return (true, error)
     }
 
-    static func isTorchOn() -> Bool {
-        AVCaptureDevice.default(for: .video)?.torchMode == .on
+    @MainActor
+    private static func perform(_ kind: DirectKind, url: URL) -> String? {
+        switch kind {
+        case .torch:
+            return toggleTorch()
+        case .brightness:
+            let screen = UIScreen.main
+            if screen.brightness >= 0.99 {
+                let saved = UserDefaults.standard.object(forKey: brightnessBeforeBoostKey) as? Double ?? 0.5
+                screen.brightness = CGFloat(saved)
+            } else {
+                UserDefaults.standard.set(Double(screen.brightness), forKey: brightnessBeforeBoostKey)
+                screen.brightness = 1.0
+            }
+            return nil
+        case .awake:
+            UIApplication.shared.isIdleTimerDisabled.toggle()
+            return nil
+        case .musicPlayPause:
+            let player = MPMusicPlayerController.systemMusicPlayer
+            if player.playbackState == .playing { player.pause() } else { player.play() }
+            return nil
+        case .musicNext:
+            MPMusicPlayerController.systemMusicPlayer.skipToNextItem()
+            return nil
+        case .musicPrevious:
+            MPMusicPlayerController.systemMusicPlayer.skipToPreviousItem()
+            return nil
+        case .copy:
+            let text = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "text" }?.value ?? ""
+            guard !text.isEmpty else { return "コピーするテキストが空です。" }
+            UIPasteboard.general.string = text
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            return nil
+        }
     }
 
-    /// ライトのオン / オフを切り替え、切り替え後の状態を返す。失敗したらその理由も返す
-    @discardableResult
-    static func toggleTorch() -> (isOn: Bool, error: String?) {
+    /// ライトのオン / オフを切り替える。失敗したらその理由を返す
+    private static func toggleTorch() -> String? {
         guard let device = AVCaptureDevice.default(for: .video), device.hasTorch else {
-            return (false, "この端末ではライトを使えません（シミュレータでは常にこの表示になります）。")
+            return "この端末ではライトを使えません（シミュレータでは常にこの表示になります）。"
         }
         do {
             try device.lockForConfiguration()
         } catch {
-            return (device.torchMode == .on, "ライトを切り替えられませんでした。\n\(error.localizedDescription)")
+            return "ライトを切り替えられませんでした。\n\(error.localizedDescription)"
         }
-        var result: (isOn: Bool, error: String?) = (false, nil)
+        defer { device.unlockForConfiguration() }
         if device.torchMode == .on {
             device.torchMode = .off
-        } else {
-            do {
-                try device.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
-                result = (true, nil)
-            } catch {
-                result = (false, "ライトを点けられませんでした。\n\(error.localizedDescription)")
-            }
+            return nil
         }
-        device.unlockForConfiguration()
-        NotificationCenter.default.post(name: torchChanged, object: result.isOn)
-        return result
+        do {
+            try device.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
+            return nil
+        } catch {
+            return "ライトを点けられませんでした。\n\(error.localizedDescription)"
+        }
     }
 
     /// ショートカットの実行に失敗したときに戻ってくる URL（BoardStore.handle がエラーを表示する）
@@ -75,6 +156,100 @@ enum SystemActions {
             URLQueryItem(name: "x-error", value: "geode://\(shortcutErrorHost)"),
         ]
         return c.string ?? "shortcuts://"
+    }
+}
+
+/// 一覧に並べる「Geode で直接」の操作
+struct DirectAction: Identifiable, Hashable {
+    enum Input: Hashable {
+        case text, phone, email, phoneOrEmail, web, address
+
+        var placeholder: String {
+            switch self {
+            case .text: return "コピーするテキスト"
+            case .phone: return "電話番号"
+            case .email: return "メールアドレス"
+            case .phoneOrEmail: return "電話番号またはメールアドレス"
+            case .web: return "https://example.com"
+            case .address: return "住所や施設名"
+            }
+        }
+
+        var keyboard: UIKeyboardType {
+            switch self {
+            case .phone: return .phonePad
+            case .email, .phoneOrEmail: return .emailAddress
+            case .web: return .URL
+            default: return .default
+            }
+        }
+    }
+
+    let id: String
+    let title: String
+    let symbol: String
+    var input: Input? = nil
+    var note: String? = nil
+
+    static let switches: [DirectAction] = [
+        .init(id: "torch", title: "ライト", symbol: "flashlight.on.fill",
+              note: "Geode を離れると消えます。"),
+        .init(id: "brightness", title: "画面を最大の明るさに", symbol: "sun.max.fill",
+              note: "もう一度押すと元の明るさに戻ります。"),
+        .init(id: "awake", title: "画面をスリープさせない", symbol: "eye",
+              note: "Geode を表示している間だけ有効です。"),
+        .init(id: "music-playpause", title: "ミュージック 再生 / 一時停止", symbol: "playpause.fill",
+              note: "Apple のミュージック App の再生だけを操作します。"),
+    ]
+
+    static let others: [DirectAction] = [
+        .init(id: "music-next", title: "ミュージック 次の曲", symbol: "forward.fill"),
+        .init(id: "music-previous", title: "ミュージック 前の曲", symbol: "backward.fill"),
+        .init(id: "copy", title: "テキストをコピー", symbol: "doc.on.clipboard", input: .text,
+              note: "押すと決めたテキストがクリップボードに入ります。"),
+        .init(id: "call", title: "電話をかける", symbol: "phone.fill", input: .phone),
+        .init(id: "sms", title: "メッセージを送る", symbol: "message.fill", input: .phone),
+        .init(id: "mail", title: "メールを書く", symbol: "envelope.fill", input: .email),
+        .init(id: "facetime", title: "FaceTime", symbol: "video.fill", input: .phoneOrEmail),
+        .init(id: "web", title: "Web ページを開く", symbol: "safari", input: .web),
+        .init(id: "route", title: "マップで経路を表示", symbol: "map", input: .address),
+    ]
+
+    /// 入力値から URL を作る。作れなければ nil
+    func makeURL(_ value: String) -> String? {
+        let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let kind = DirectKind(rawValue: id) {
+            if kind == .copy {
+                guard !v.isEmpty else { return nil }
+                var c = URLComponents()
+                c.scheme = "geode"
+                c.host = DirectKind.copy.rawValue
+                c.queryItems = [URLQueryItem(name: "text", value: v)]
+                return c.string
+            }
+            return SystemActions.url(kind)
+        }
+        guard !v.isEmpty else { return nil }
+        let dial = v.filter { "0123456789+*#".contains($0) }
+        switch id {
+        case "call": return dial.isEmpty ? nil : "tel:\(dial)"
+        case "sms": return dial.isEmpty ? nil : "sms:\(dial)"
+        case "mail":
+            var c = URLComponents()
+            c.scheme = "mailto"
+            c.path = v
+            return c.string
+        case "facetime":
+            let target = v.contains("@") ? v.replacingOccurrences(of: " ", with: "") : dial
+            return target.isEmpty ? nil : "facetime:\(target)"
+        case "web":
+            return v.contains("://") ? v : "https://\(v)"
+        case "route":
+            var c = URLComponents(string: "https://maps.apple.com/")
+            c?.queryItems = [URLQueryItem(name: "daddr", value: v)]
+            return c?.string
+        default: return nil
+        }
     }
 }
 
@@ -106,113 +281,146 @@ struct ShortcutPreset: Identifiable, Hashable {
     ]
 }
 
-/// オン / オフのスイッチ表示（アイコンの右下に重ねる）。ウィジェットと共有しないよう ItemIcon とは別にする
-struct SwitchBadge: View {
-    let isOn: Bool
-    let width: CGFloat
-
-    var body: some View {
-        let height = width * 0.6
-        Capsule()
-            .fill(isOn ? Color.green : Color(white: 0.45))
-            .frame(width: width, height: height)
-            .overlay(alignment: isOn ? .trailing : .leading) {
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: height * 0.8, height: height * 0.8)
-                    .padding(height * 0.1)
-                    .shadow(color: .black.opacity(0.25), radius: 1, y: 0.5)
-            }
-            .overlay(Capsule().stroke(Color.black.opacity(0.15), lineWidth: 0.5))
-            .animation(.snappy(duration: 0.2), value: isOn)
-            .allowsHitTesting(false)
-    }
-}
-
 /// 本体の操作を選ぶ画面（アクション編集画面から開く）
 struct SystemActionPicker: View {
     let onPick: (PickedApp) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var selected: ShortcutPreset?
-    @State private var shortcutName = ""
 
-    private var trimmedName: String { shortcutName.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private enum Selection: Hashable {
+        case direct(DirectAction)
+        case shortcut(ShortcutPreset)
+    }
+
+    @State private var selected: Selection?
+    @State private var value = ""
+
+    private var trimmed: String { value.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
         List {
             Section {
-                Button {
-                    onPick(PickedApp(name: "ライト", urlString: SystemActions.torchURL,
-                                     symbol: "flashlight.on.fill", iconFile: nil, isToggle: true))
-                    dismiss()
-                } label: {
-                    Label("ライト（オン / オフ切り替え）", systemImage: "flashlight.on.fill")
-                }
+                ForEach(DirectAction.switches) { directRow($0) }
+            } header: {
+                Text("Geode で直接実行（オン / オフ）")
+            } footer: {
+                Text("オンの間はアイコンの色が反転します。ショートカット App は開きません。")
+            }
+
+            Section {
+                ForEach(DirectAction.others) { directRow($0) }
             } header: {
                 Text("Geode で直接実行")
-            } footer: {
-                Text("Geode の画面のまま、押すたびにオン / オフが切り替わります。Geode を離れると消えます。点けたままにしたいときは、下の「ライト（Geode を離れても点いたまま）」を使います。")
             }
 
             Section {
                 ForEach(ShortcutPreset.all) { preset in
                     Button {
-                        selected = preset
-                        shortcutName = preset.defaultName
+                        selected = .shortcut(preset)
+                        value = preset.defaultName
                     } label: {
-                        HStack {
-                            Label(preset.title, systemImage: preset.symbol)
-                            Spacer()
-                            if selected == preset {
-                                Image(systemName: "checkmark")
-                            }
-                        }
+                        row(title: preset.title, symbol: preset.symbol, checked: selected == .shortcut(preset))
                     }
                 }
             } header: {
                 Text("ショートカット経由")
             } footer: {
-                Text("iOS はアプリから消音モードや Wi-Fi などを直接操作できません。ショートカット App で作ったショートカットを、Geode から名前で実行します。")
+                Text("消音モードや Wi-Fi などは、iOS がアプリからの操作を許していません。ショートカット App で作ったショートカットを、Geode から名前で実行します。")
             }
 
-            if let preset = selected {
-                Section {
-                    TextField("ショートカット名", text: $shortcutName)
-                        .autocorrectionDisabled()
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("1. 下の「ショートカット App を開く」で、新しいショートカットを作ります。")
-                        if let hint = preset.hint {
-                            Text("2. 「アクションを追加」で「\(hint)」のような名前のアクションを検索して追加します。iOS のバージョンによって名前が違ったり、無かったりします。オン / オフの指定を「切り替える」にすると、押すたびに入れ替わります。")
-                        } else {
-                            Text("2. 実行したいアクションを追加します。")
-                        }
-                        Text("3. ショートカットの名前を「\(trimmedName.isEmpty ? "（上で決めた名前）" : trimmedName)」にします。1 文字でも違うと実行できません。")
-                    }
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    Button("ショートカット App を開く") {
-                        if let url = URL(string: "shortcuts://create-shortcut") {
-                            UIApplication.shared.open(url, options: [:]) { ok in
-                                if !ok, let fallback = URL(string: "shortcuts://") {
-                                    UIApplication.shared.open(fallback)
-                                }
-                            }
-                        }
-                    }
-                    Button("このアクションを使う") {
-                        let title = preset.hint == nil ? trimmedName : preset.title
-                        onPick(PickedApp(name: title, urlString: SystemActions.shortcutURL(trimmedName),
-                                         symbol: preset.symbol, iconFile: nil, isToggle: preset.isSwitch,
-                                         startsOn: preset.startsOn))
-                        dismiss()
-                    }
-                    .disabled(trimmedName.isEmpty)
-                } header: {
-                    Text("「\(preset.title)」の準備")
-                }
+            if let selected {
+                detail(selected)
             }
         }
         .navigationTitle("本体の操作")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func row(title: String, symbol: String, checked: Bool) -> some View {
+        HStack {
+            Label(title, systemImage: symbol)
+            Spacer()
+            if checked { Image(systemName: "checkmark") }
+        }
+    }
+
+    private func directRow(_ action: DirectAction) -> some View {
+        Button {
+            if action.input == nil, let url = action.makeURL("") {
+                pick(action, url: url)
+            } else {
+                selected = .direct(action)
+                value = ""
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                row(title: action.title, symbol: action.symbol, checked: selected == .direct(action))
+                if let note = action.note {
+                    Text(note).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func pick(_ action: DirectAction, url: String) {
+        let kind = DirectKind(rawValue: action.id)
+        onPick(PickedApp(name: action.title, urlString: url, symbol: action.symbol, iconFile: nil,
+                         isToggle: kind?.isSwitch ?? false))
+        dismiss()
+    }
+
+    @ViewBuilder
+    private func detail(_ selection: Selection) -> some View {
+        switch selection {
+        case .direct(let action):
+            if let input = action.input {
+                Section {
+                    TextField(input.placeholder, text: $value)
+                        .keyboardType(input.keyboard)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button("このアクションを使う") {
+                        if let url = action.makeURL(trimmed) { pick(action, url: url) }
+                    }
+                    .disabled(action.makeURL(trimmed) == nil)
+                } header: {
+                    Text("「\(action.title)」の設定")
+                }
+            }
+        case .shortcut(let preset):
+            Section {
+                TextField("ショートカット名", text: $value)
+                    .autocorrectionDisabled()
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("1. 下の「ショートカット App を開く」で、新しいショートカットを作ります。")
+                    if let hint = preset.hint {
+                        Text("2. 「アクションを追加」で「\(hint)」のような名前のアクションを検索して追加します。iOS のバージョンによって名前が違ったり、無かったりします。オン / オフの指定を「切り替える」にすると、押すたびに入れ替わります。")
+                    } else {
+                        Text("2. 実行したいアクションを追加します。")
+                    }
+                    Text("3. ショートカットの名前を「\(trimmed.isEmpty ? "（上で決めた名前）" : trimmed)」にします。1 文字でも違うと実行できません。")
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                Button("ショートカット App を開く") {
+                    if let url = URL(string: "shortcuts://create-shortcut") {
+                        UIApplication.shared.open(url, options: [:]) { ok in
+                            if !ok, let fallback = URL(string: "shortcuts://") {
+                                UIApplication.shared.open(fallback)
+                            }
+                        }
+                    }
+                }
+                Button("このアクションを使う") {
+                    let title = preset.hint == nil ? trimmed : preset.title
+                    onPick(PickedApp(name: title, urlString: SystemActions.shortcutURL(trimmed),
+                                     symbol: preset.symbol, iconFile: nil, isToggle: preset.isSwitch,
+                                     startsOn: preset.startsOn))
+                    dismiss()
+                }
+                .disabled(trimmed.isEmpty)
+            } header: {
+                Text("「\(preset.title)」の準備")
+            }
+        }
     }
 }

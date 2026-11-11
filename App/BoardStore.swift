@@ -1,5 +1,6 @@
 import SwiftUI
 import WidgetKit
+import MediaPlayer
 
 @MainActor
 final class BoardStore: ObservableObject {
@@ -15,8 +16,9 @@ final class BoardStore: ObservableObject {
     /// 最後に実行したショートカット名（失敗して戻ってきたときの表示用）
     private var lastShortcutName = ""
 
-    /// ライトの実際の状態（端末に 1 つなので 1 つのフラグで持つ）
-    @Published private(set) var torchOn = false
+    /// Geode で直接操作するスイッチの実際の状態（キーは DirectKind.rawValue）
+    @Published private(set) var directStates: [String: Bool] = [:]
+    private var musicNotificationsStarted = false
     /// ショートカット経由のスイッチの状態（Geode の推定値）。キーは LaunchItem.id の文字列。
     /// 盤面と分けて保存する（切り替えのたびに board.json とウィジェットを更新しないため）
     @Published private(set) var toggleStates: [String: Bool]
@@ -28,11 +30,16 @@ final class BoardStore: ObservableObject {
         board = SharedStorage.loadBoard()
         toggleStates = (UserDefaults.standard.dictionary(forKey: Self.toggleStatesKey) as? [String: Bool]) ?? [:]
         cleanUpIcons()
-        torchOn = SystemActions.isTorchOn()
-        NotificationCenter.default.addObserver(forName: SystemActions.torchChanged, object: nil, queue: .main) { [weak self] note in
-            let on = note.object as? Bool ?? false
-            Task { @MainActor in self?.torchOn = on }
+        // どこから実行しても（テスト起動を含む）状態を読み直す
+        NotificationCenter.default.addObserver(forName: SystemActions.directActionPerformed, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshDirectStates()
+                // ミュージックの状態は少し遅れて変わるので、念のため読み直す
+                try? await Task.sleep(for: .milliseconds(600))
+                self?.refreshDirectStates()
+            }
         }
+        refreshDirectStates()
     }
 
     // MARK: スイッチ
@@ -40,7 +47,7 @@ final class BoardStore: ObservableObject {
     /// スイッチとして表示するアイテムの状態。スイッチでなければ nil
     func switchState(for item: LaunchItem) -> Bool? {
         guard SystemActions.isSwitch(item) else { return nil }
-        if SystemActions.isTorchURL(item.urlString) { return torchOn }
+        if let kind = SystemActions.directKind(item.urlString) { return directStates[kind.rawValue] ?? false }
         return toggleStates[item.id.uuidString] ?? (item.toggleStartsOn ?? false)
     }
 
@@ -57,12 +64,33 @@ final class BoardStore: ObservableObject {
             result.append(item)
             result.append(contentsOf: item.children.values)
         }
-        return result.filter { SystemActions.isSwitch($0) && !SystemActions.isTorchURL($0.urlString) }
+        return result.filter { SystemActions.isSwitch($0) && SystemActions.directKind($0.urlString) == nil }
     }
 
-    /// アプリが前面に戻ったときにライトの実際の状態を読み直す（Geode を離れると消えるため）
-    func refreshTorch() {
-        torchOn = SystemActions.isTorchOn()
+    /// 盤面で使われている「Geode で直接」のスイッチの実際の状態を読み直す。
+    /// 前面に戻ったとき・操作したときに呼ぶ（ライトは Geode を離れると消えるため）
+    func refreshDirectStates() {
+        var kinds = Set<DirectKind>()
+        for item in board.topLevelItems {
+            for i in [item] + Array(item.children.values) {
+                if let kind = SystemActions.directKind(i.urlString), kind.isSwitch { kinds.insert(kind) }
+            }
+        }
+        // ミュージックを使うときだけ再生状態の通知を受け取る（使わない人に許可を求めないため）
+        if kinds.contains(.musicPlayPause) && !musicNotificationsStarted {
+            musicNotificationsStarted = true
+            let player = MPMusicPlayerController.systemMusicPlayer
+            player.beginGeneratingPlaybackNotifications()
+            NotificationCenter.default.addObserver(forName: .MPMusicPlayerControllerPlaybackStateDidChange,
+                                                   object: player, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.refreshDirectStates() }
+            }
+        }
+        var states: [String: Bool] = [:]
+        for kind in kinds {
+            states[kind.rawValue] = SystemActions.readState(kind) ?? false
+        }
+        if states != directStates { directStates = states }
     }
 
     // MARK: 起動
@@ -78,7 +106,7 @@ final class BoardStore: ObservableObject {
         if isSwitch {
             UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 1.0)
         }
-        // ライトなど Geode 自身が実行する操作（状態は torchChanged 通知で更新される）
+        // ライトなど Geode 自身が実行する操作（状態は directActionPerformed 通知で読み直す）
         let builtIn = SystemActions.performIfBuiltIn(url)
         if builtIn.handled {
             if let error = builtIn.error { errorMessage = error }

@@ -137,7 +137,7 @@ struct TileView: View {
     let item: LaunchItem?
     let metrics: GridMetrics
     var highlighted = false
-    /// オン / オフのスイッチの状態。nil ならスイッチを表示しない（編集モードなど）
+    /// オン / オフのスイッチの状態。true ならアイコンをネガポジ反転する（編集モードでは渡さない）
     var switchState: Bool? = nil
     @AppStorage("glassIcons") private var glassIcons = false
     @AppStorage("labelWeight") private var labelWeight = Theme.defaultWeight
@@ -145,14 +145,8 @@ struct TileView: View {
     var body: some View {
         if let item {
             VStack(spacing: 0) {
-                ItemIcon(item: item, size: metrics.tile, glass: glassIcons)
+                ItemIcon(item: item, size: metrics.tile, glass: glassIcons, isOn: switchState ?? false)
                     .overlay(iconShape(metrics.tile).fill(Color.white.opacity(highlighted ? 0.3 : 0)))
-                    .overlay(alignment: .bottomTrailing) {
-                        if let switchState {
-                            SwitchBadge(isOn: switchState, width: max(metrics.tile * 0.38, 18))
-                                .offset(x: metrics.tile * 0.06, y: metrics.tile * 0.06)
-                        }
-                    }
                     .scaleEffect(highlighted ? 1.06 : 1)
                 if metrics.labelHeight > 0 {
                     Text(item.name)

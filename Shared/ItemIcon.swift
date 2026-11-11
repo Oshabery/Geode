@@ -131,32 +131,57 @@ struct ItemIcon: View {
     let item: LaunchItem
     var size: CGFloat = 60
     var glass = false
+    /// オンのスイッチはネガポジ反転で表示する（ウィジェットでは使わない）
+    var isOn = false
 
     var body: some View {
         if let file = item.iconFile, let img = loadIconImage(file) {
-            Image(uiImage: img)
+            let picture = Image(uiImage: img)
                 .resizable()
                 .scaledToFill()
                 .frame(width: size, height: size)
                 .clipShape(iconShape(size))
-                .overlay { if glass { GlassSheen(size: size) } }
-                .shadow(color: .black.opacity(glass ? 0.3 : 0), radius: size * 0.08, y: size * 0.045)
+            Group {
+                if isOn { picture.colorInvert() } else { picture }
+            }
+            .overlay { if glass { GlassSheen(size: size) } }
+            .shadow(color: .black.opacity(glass ? 0.3 : 0), radius: size * 0.08, y: size * 0.045)
         } else if let base = item.baseHSB {
-            // ベース色を指定したシンボルアイコン
+            // ベース色を指定したシンボルアイコン。オンでは記号と下地の色を入れ替える
+            let light: Color = base.prefersDarkSymbol ? .black : .white
+            let fg: Color = isOn ? base.color : light
+            let bg: Color = isOn ? light : base.color
             let symbol = Image(systemName: item.symbol)
                 .font(.system(size: size * 0.45, weight: .light))
-                .foregroundStyle(base.prefersDarkSymbol ? Color.black : Color.white)
+                .foregroundStyle(fg)
                 .frame(width: size, height: size)
             if glass {
-                symbol.iconGlass(size: size, tint: base.color)
+                symbol.iconGlass(size: size, tint: bg)
             } else {
-                symbol.background(iconShape(size).fill(base.color))
+                symbol.background(iconShape(size).fill(bg))
             }
         } else if glass {
-            Image(systemName: item.symbol)
-                .font(.system(size: size * 0.45, weight: .light))
-                .frame(width: size, height: size)
-                .iconGlass(size: size)
+            if isOn {
+                Image(systemName: item.symbol)
+                    .font(.system(size: size * 0.45, weight: .light))
+                    .foregroundStyle(Color.white)
+                    .frame(width: size, height: size)
+                    .background(iconShape(size).fill(.tint))
+                    .iconGlass(size: size)
+            } else {
+                Image(systemName: item.symbol)
+                    .font(.system(size: size * 0.45, weight: .light))
+                    .frame(width: size, height: size)
+                    .iconGlass(size: size)
+            }
+        } else if isOn {
+            ZStack {
+                iconShape(size).fill(.tint)
+                Image(systemName: item.symbol)
+                    .font(.system(size: size * 0.45, weight: .light))
+                    .foregroundStyle(Color.white)
+            }
+            .frame(width: size, height: size)
         } else {
             ZStack {
                 iconShape(size).fill(.tint.opacity(0.18))

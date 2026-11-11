@@ -76,7 +76,7 @@ struct ItemEditor: View {
                                 note = nil
                             }
                         }
-                        if !SystemActions.isTorchURL(item.urlString) {
+                        if SystemActions.directKind(item.urlString) == nil {
                             Toggle("オン / オフのスイッチとして表示", isOn: Binding(
                                 get: { item.isToggle == true },
                                 set: { item.isToggle = $0 ? true : nil }))

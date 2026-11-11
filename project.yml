@@ -30,6 +30,7 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSCameraUsageDescription: ライトのオン / オフを切り替えるために使います。
+        NSAppleMusicUsageDescription: ミュージックの再生 / 一時停止、曲送りに使います。
         CFBundleURLTypes:
           - CFBundleURLName: geode
             CFBundleURLSchemes: [geode]

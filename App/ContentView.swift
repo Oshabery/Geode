@@ -64,7 +64,7 @@ struct ContentView: View {
         .tint(tint)
         .preferredColorScheme(scheme)
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { store.refreshTorch() }
+            if phase == .active { store.refreshDirectStates() }
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
