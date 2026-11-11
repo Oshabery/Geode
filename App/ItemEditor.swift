@@ -21,6 +21,16 @@ struct ItemEditor: View {
         "briefcase", "graduationcap", "fork.knife", "cup.and.saucer", "figure.run", "cloud.sun", "wrench.and.screwdriver", "sparkles",
     ]
 
+    /// 保存して閉じる。グループ名が空のまま中身のページから完了した場合は仮の名前を付ける。
+    private func save() {
+        var saved = item
+        if saved.name.trimmingCharacters(in: .whitespaces).isEmpty {
+            saved.name = saved.kind == .group ? "グループ" : "アクション"
+        }
+        onSave(saved)
+        dismiss()
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -58,6 +68,12 @@ struct ItemEditor: View {
                                          reservedSlot: slot, reservedItem: item)
                                 .navigationTitle(item.name.isEmpty ? "グループ" : item.name)
                                 .navigationBarTitleDisplayMode(.inline)
+                                .toolbar {
+                                    // 中身を配置したら、このページからそのまま保存して閉じられる
+                                    ToolbarItem(placement: .confirmationAction) {
+                                        Button("完了") { save() }
+                                    }
+                                }
                         }
                     }
                 } footer: {
@@ -108,11 +124,8 @@ struct ItemEditor: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完了") {
-                        onSave(item)
-                        dismiss()
-                    }
-                    .disabled(item.name.isEmpty)
+                    Button("完了") { save() }
+                        .disabled(item.name.isEmpty)
                 }
             }
             .onChange(of: photo) { _, newValue in
