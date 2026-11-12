@@ -27,6 +27,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 - `tools/import_installed_apps.py` は `xcrun devicectl` の JSON 出力形式を記憶で書いており、実行確認していない
 - ウィジェット（`Widget/LaunchWidget.swift`）の実機での見た目と動作
 - 本体の操作（`App/SystemActions.swift`）: ショートカット App のアクション名（日本語）と消音モードのアクションの有無は記憶ベース。ショートカット経由のライトが点いたままになるか。Geode で上げた画面の明るさが Geode を離れても保たれるか。ミュージックの操作で許可を求められるか、再生状態の通知が届くか
+- グローのライト（`glowLight`）: 文字・記号・縁・下のボタンの見やすさ、オン / オフの分かりやすさ、明るい画面の上でグループ階層の背景が暗く見えるか（初回の配色）
 - グローの傾き: 光が動く向きが自然か（`GlowLight.direction` の符号）、滑らかさ、寝転んだときの挙動、発熱や電池の減り
 
 変更したらビルドして確認すること。シミュレータでは他アプリの URL スキームをほとんど開けない（「起動エラー」になるのは正常）ので、起動の確認は実機で行う。

@@ -362,6 +362,8 @@ struct GlowSurfaceLight<S: Shape>: View {
     var hue: Double? = nil
     /// 光の側の反射の強さ
     var glow: Double = 0.42
+    /// ライトで白い映り込みを強く乗せるか（白っぽいすりガラスのタイルだけ。画像・オンのタイル・ボタンでは白くかすむので弱くする）
+    var paleSurface = false
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
     @ObservedObject private var motion = GlowMotion.shared
     @Environment(\.colorScheme) private var scheme
@@ -375,7 +377,7 @@ struct GlowSurfaceLight<S: Shape>: View {
                 shape.fill(RadialGradient(
                     colors: [Color(hue: base, saturation: 0.45, brightness: 1).opacity(glow * 0.8), .clear],
                     center: light.lit, startRadius: 0, endRadius: size * 0.75))
-                shape.fill(LinearGradient(colors: [.white.opacity(0.55), .clear],
+                shape.fill(LinearGradient(colors: [.white.opacity(paleSurface ? 0.55 : 0.1), .clear],
                                           startPoint: light.far, endPoint: .center))
                 shape.fill(LinearGradient(colors: [.black.opacity(0.12 * light.amount), .clear],
                                           startPoint: light.far, endPoint: .center))
@@ -426,7 +428,9 @@ struct GlowTileBackground: View {
                   Color(hue: hue, saturation: 0.85, brightness: dim ? 0.2 : 0.42)])
         ZStack {
             shape.fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
-            GlowSurfaceLight(shape: shape, size: size, hue: hue, glow: isOn ? 0.6 : (dim ? 0.12 : 0.42))
+            GlowSurfaceLight(shape: shape, size: size, hue: hue,
+                             glow: isLight && isOn ? 0.15 : (isOn ? 0.6 : (dim ? 0.12 : 0.42)),
+                             paleSurface: !isOn)
             GlowEdges(shape: shape, size: size, hue: hue, dim: dim, additive: !isOn)
         }
         .frame(width: size, height: size)
