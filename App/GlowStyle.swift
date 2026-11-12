@@ -520,7 +520,7 @@ struct GlowTileBackground: View {
     }
 }
 
-/// タイルの外にこぼれる光。光の側へ出る。
+/// タイルの外にこぼれる光（グローのライトでは影）。光は光の側へ、影は反対側へ出る。
 /// ぼかしフィルターは使わず、端で透明になるなだらかな放射グラデーションで境界を見せない
 struct GlowUnderLight: View {
     let size: CGFloat
@@ -538,8 +538,15 @@ struct GlowUnderLight: View {
         let light = GlowLight(motion.tilt)
         let f = GlowPalette.factor(intensity)
         let isLight = scheme == .light
-        let color = Color(hue: hue, saturation: isLight ? 0.6 : 0.7, brightness: 1)
-        let peak = min(0.4 * (0.4 + 0.6 * f), 0.75) * (isLight ? 0.8 : 1)
+        // ライトでは光の代わりに影にする（同じ形・同じぼけ方。色は地の色相を少し含んだ濃い色）
+        let color = isLight
+            ? Color(hue: hue, saturation: 0.5, brightness: 0.18)
+            : Color(hue: hue, saturation: 0.7, brightness: 1)
+        let peak = isLight
+            ? min(0.16 * (0.6 + 0.4 * f), 0.3)
+            : min(0.4 * (0.4 + 0.6 * f), 0.75)
+        // 光は光の側へ寄り、影は反対側へ落ちる
+        let side: CGFloat = isLight ? -1 : 1
         // 円の端でちょうど透明になる、なだらかな減り方のグラデーションを描き、縦につぶして楕円にする。
         // 端に境界線が出ない（ぼかしフィルターを使わずに、ぼかしたような見た目にする）
         Circle()
@@ -552,9 +559,9 @@ struct GlowUnderLight: View {
             ], center: .center, startRadius: 0, endRadius: size * 0.85))
             .frame(width: size * 1.7, height: size * 1.7)
             .scaleEffect(x: 1, y: 0.45)
-            // 傾き 0 ではタイルの真下。そこから少しだけ光の側へ寄る
-            .offset(x: light.dx * size * Self.travel,
-                    y: size * 0.45 + light.ty * size * Self.travel)
+            // 傾き 0 ではタイルの真下。そこから少しだけ光の側（影なら反対側）へ寄る
+            .offset(x: side * light.dx * size * Self.travel,
+                    y: size * 0.45 + side * light.ty * size * Self.travel)
             .allowsHitTesting(false)
     }
 }
