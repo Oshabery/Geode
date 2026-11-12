@@ -230,6 +230,13 @@ struct LauncherGridView: View {
     /// 指が触れている間 true（最初のイベントの判定用。触れた場所が格子の外だと touchStart は nil になる）
     @State private var touching = false
 
+    /// グループ階層に入るときの動き。出だしは速く（押した瞬間にほぼ見える）、
+    /// 終わりにかけて長くゆっくり落ち着く（余韻）
+    private static let openAnimation = Animation.timingCurve(0.2, 0.75, 0.1, 1.0, duration: 0.5)
+    /// 戻るときは短く、すっと消える
+    private static let closeDuration = 0.22
+    private static let closeAnimation = Animation.timingCurve(0.3, 0.0, 0.2, 1.0, duration: closeDuration)
+
     var body: some View {
         GeometryReader { geo in
             let metrics = GridMetrics(size: geo.size, layout: store.board.layout, showLabels: showLabels,
@@ -249,6 +256,8 @@ struct LauncherGridView: View {
                     // 押しているグループの周りだけ少し明るくして、1 枚上の階層に上がった感じを出す
                     GroupBackdrop(gridFrame: geo.frame(in: .global),
                                   focus: groupSlot.map { metrics.center($0) })
+                        .transition(.opacity)
+                        .zIndex(1)
                     GridCells(metrics: metrics) { slot in
                         if slot == groupSlot {
                             TileView(item: group, metrics: metrics, highlighted: true)
@@ -258,6 +267,10 @@ struct LauncherGridView: View {
                         }
                     }
                     .foregroundStyle(.white)
+                    // 少し小さいところからふわっと定位置へ。消えるときは薄くなるだけ
+                    .transition(.asymmetric(insertion: .scale(scale: 0.94).combined(with: .opacity),
+                                            removal: .opacity))
+                    .zIndex(2)
                 }
             }
             .contentShape(Rectangle())
@@ -266,11 +279,20 @@ struct LauncherGridView: View {
                     .onChanged { touchMoved(metrics.slot(at: $0.location)) }
                     .onEnded { touchEnded(metrics.slot(at: $0.location)) }
             )
-            .animation(.easeOut(duration: 0.06), value: openGroup?.id)
+            .animation(openGroup != nil ? Self.openAnimation : Self.closeAnimation, value: openGroup?.id)
             .animation(.easeOut(duration: 0.1), value: highlighted)
         }
         // 開いている間は ContentView がこのビューを最前面に描く（背景が下のボタンも覆えるように）
-        .onChange(of: openGroup?.id) { _, id in store.groupLayerOpen = id != nil }
+        .onChange(of: openGroup?.id) { _, id in
+            if id != nil {
+                store.groupLayerOpen = true
+            } else {
+                // 背景が消えきるまでは最前面のままにする（途中で下のボタンが手前に飛び出さないように）
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.closeDuration + 0.05) {
+                    if openGroup == nil { store.groupLayerOpen = false }
+                }
+            }
+        }
         .onDisappear { store.groupLayerOpen = false }
         .onAppear(perform: openRequestedGroup)
         .onChange(of: store.requestedGroup) { _, _ in openRequestedGroup() }
