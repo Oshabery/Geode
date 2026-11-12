@@ -13,17 +13,39 @@ enum UIStyle: Int, CaseIterable, Identifiable {
     }
 }
 
-/// グローの基本の色相（青）
-private let glowHue: Double = 222.0 / 360
+/// グローの色。設定で選ぶ（色相を 0–360 の度で @AppStorage に保存）
+enum GlowPalette {
+    static let key = "glowHue"
+    static let defaultHue: Double = 222
+
+    struct Preset: Identifiable {
+        let name: String
+        let hue: Double
+        var id: String { name }
+        var swatch: Color { Color(hue: hue / 360, saturation: 0.85, brightness: 0.9) }
+    }
+
+    static let presets: [Preset] = [
+        .init(name: "ブルー", hue: 222),
+        .init(name: "シアン", hue: 190),
+        .init(name: "グリーン", hue: 140),
+        .init(name: "パープル", hue: 270),
+        .init(name: "ピンク", hue: 320),
+        .init(name: "レッド", hue: 355),
+        .init(name: "オレンジ", hue: 25),
+    ]
+}
 
 // MARK: 背景
 
 /// 黒地に、下から青い光が差し込む背景
 struct GlowBackground: View {
+    @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
+
     var body: some View {
         ZStack {
             Color.black
-            RadialGradient(colors: [Color(hue: glowHue, saturation: 0.85, brightness: 0.9).opacity(0.55), .clear],
+            RadialGradient(colors: [Color(hue: themeHue / 360, saturation: 0.85, brightness: 0.9).opacity(0.55), .clear],
                            center: UnitPoint(x: 0.5, y: 1.08), startRadius: 0, endRadius: 620)
             RadialGradient(colors: [Color.white.opacity(0.22), .clear],
                            center: UnitPoint(x: 0.5, y: 1.02), startRadius: 0, endRadius: 260)
@@ -67,11 +89,14 @@ struct GlowEdges<S: InsettableShape>: View {
 /// すりガラスのタイル。下から光が当たったように下側が明るい。オンのときは全体が光る（ネガポジ反転）
 struct GlowTileBackground: View {
     let size: CGFloat
-    var hue: Double = glowHue
+    /// 色相（0–1）。nil なら設定のグローの色
+    var hue: Double? = nil
     var isOn = false
     var dim = false
+    @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
 
     var body: some View {
+        let hue = self.hue ?? themeHue / 360
         let shape = iconShape(size)
         let colors: [Color] = isOn
             ? [Color(hue: hue, saturation: 0.25, brightness: 0.92), Color(hue: hue, saturation: 0.45, brightness: 1)]
@@ -92,9 +117,11 @@ struct GlowTileBackground: View {
 /// タイルの下にこぼれる光（ぼかしの代わりに放射グラデーション）
 struct GlowUnderLight: View {
     let size: CGFloat
-    var hue: Double = glowHue
+    var hue: Double? = nil
+    @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
 
     var body: some View {
+        let hue = self.hue ?? themeHue / 360
         Ellipse()
             .fill(RadialGradient(colors: [Color(hue: hue, saturation: 0.7, brightness: 1).opacity(0.4), .clear],
                                  center: .center, startRadius: 0, endRadius: size * 0.7))
@@ -113,7 +140,8 @@ struct GlowIcon: View {
     let size: CGFloat
     var isOn = false
 
-    private var hue: Double { item.baseHSB.map { $0.h / 360 } ?? glowHue }
+    /// ベース色を指定したアイテムはその色相、それ以外は設定のグローの色（nil）
+    private var hue: Double? { item.baseHSB.map { $0.h / 360 } }
 
     var body: some View {
         Group {
@@ -144,10 +172,12 @@ struct GlowIcon: View {
 struct GlowSymbol: View {
     let name: String
     let size: CGFloat
-    var hue: Double = glowHue
+    var hue: Double? = nil
     var isOn = false
+    @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
 
     var body: some View {
+        let hue = self.hue ?? themeHue / 360
         let image = Image(systemName: name).font(.system(size: size * 0.42, weight: .regular))
         if isOn {
             image.foregroundStyle(Color(hue: hue, saturation: 0.9, brightness: 0.22))
@@ -163,8 +193,10 @@ struct GlowSymbol: View {
 /// グローの丸いボタンの下地
 struct GlowCircle: View {
     var tint: Color? = nil
+    @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
 
     var body: some View {
+        let glowHue = themeHue / 360
         ZStack {
             Circle().fill(LinearGradient(colors: [Color(hue: glowHue, saturation: 0.9, brightness: 0.08),
                                                   Color(hue: glowHue, saturation: 0.85, brightness: 0.36)],
@@ -196,5 +228,48 @@ struct StyledCircleGlass: ViewModifier {
 extension View {
     func styledCircleGlass(tint: Color? = nil, interactive: Bool = false) -> some View {
         modifier(StyledCircleGlass(tint: tint, interactive: interactive))
+    }
+}
+
+/// 設定画面: グローの色を選ぶ
+struct GlowColorPicker: View {
+    @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(GlowPalette.presets) { preset in
+                        let selected = themeHue == preset.hue
+                        Button {
+                            themeHue = preset.hue
+                        } label: {
+                            VStack(spacing: 4) {
+                                ZStack {
+                                    Circle().fill(Color.black)
+                                    Circle().fill(RadialGradient(colors: [preset.swatch, .clear], center: .bottom,
+                                                                 startRadius: 0, endRadius: 26))
+                                    Circle().strokeBorder(Color.white.opacity(selected ? 0.95 : 0.25),
+                                                          lineWidth: selected ? 2 : 1)
+                                }
+                                .frame(width: 40, height: 40)
+                                Text(preset.name)
+                                    .font(.caption2)
+                                    .foregroundStyle(selected ? Color.primary : Color.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            HStack {
+                Text("色相")
+                Slider(value: $themeHue, in: 0...360, step: 1)
+                Circle()
+                    .fill(Color(hue: themeHue / 360, saturation: 0.85, brightness: 0.9))
+                    .frame(width: 20, height: 20)
+            }
+        }
     }
 }

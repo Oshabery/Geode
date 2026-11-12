@@ -141,6 +141,9 @@ struct SettingsView: View {
                     .disabled(uiStyle == UIStyle.glow.rawValue)
                     Toggle("アイコンをガラス風にする", isOn: $glassIcons)
                         .disabled(uiStyle == UIStyle.glow.rawValue)
+                    if uiStyle == UIStyle.glow.rawValue {
+                        GlowColorPicker()
+                    }
                 } header: {
                     Text("外観")
                 } footer: {
