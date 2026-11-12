@@ -453,15 +453,13 @@ struct GlowSpecular<S: Shape>: View {
         let t = motion.tilt
         let x = min(max(0.3 - t.width * 0.35, 0.05), 0.95)
         let y = min(max(0.26 - t.height * 0.35, 0.05), 0.95)
-        let peak = scheme == .light ? 0.5 : 0.2
+        let peak = scheme == .light ? 0.4 : 0.16
+        // ぼかしたように見えるよう、中心が平らで裾の長い減り方（ガウス分布に近い形）にして、範囲を広げる
+        let falloff: [(Double, Double)] = [(0, 1), (0.15, 0.94), (0.3, 0.8), (0.45, 0.6),
+                                           (0.6, 0.4), (0.75, 0.22), (0.9, 0.08), (1, 0)]
         shape
-            .fill(RadialGradient(stops: [
-                .init(color: .white.opacity(peak), location: 0),
-                .init(color: .white.opacity(peak * 0.6), location: 0.25),
-                .init(color: .white.opacity(peak * 0.25), location: 0.5),
-                .init(color: .white.opacity(peak * 0.07), location: 0.75),
-                .init(color: .white.opacity(0), location: 1),
-            ], center: UnitPoint(x: x, y: y), startRadius: 0, endRadius: size * 0.5))
+            .fill(RadialGradient(stops: falloff.map { .init(color: .white.opacity(peak * $0.1), location: $0.0) },
+                                 center: UnitPoint(x: x, y: y), startRadius: 0, endRadius: size * 0.8))
             .blendMode(scheme == .light ? .normal : .plusLighter)
             .allowsHitTesting(false)
     }
