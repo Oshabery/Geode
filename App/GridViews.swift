@@ -147,7 +147,6 @@ struct TileView: View {
     var switchState: Bool? = nil
     /// グローで傾けたとき、背景との視差でずらすか（通常モードのグリッドだけ。編集中は動かさない）
     var parallax = false
-    @AppStorage("glassIcons") private var glassIcons = false
     @AppStorage("labelWeight") private var labelWeight = Theme.defaultWeight
     @AppStorage("uiStyle") private var uiStyle = UIStyle.standard.rawValue
     @Environment(\.colorScheme) private var scheme
@@ -160,7 +159,7 @@ struct TileView: View {
                     if isGlow {
                         GlowIcon(item: item, size: metrics.tile, isOn: switchState ?? false)
                     } else {
-                        ItemIcon(item: item, size: metrics.tile, glass: glassIcons, isOn: switchState ?? false)
+                        ItemIcon(item: item, size: metrics.tile, isOn: switchState ?? false)
                     }
                 }
                 .overlay(iconShape(metrics.tile).fill(Color.white.opacity(highlighted ? 0.3 : 0)))

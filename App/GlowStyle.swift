@@ -446,6 +446,29 @@ struct GlowSurfaceLight<S: Shape>: View {
     }
 }
 
+/// アイコンの表面に映り込む細い光の帯。傾けると、光と反対の向きへ表面をすべるように動く。
+/// 傾けていないときは左上寄りに薄く乗る
+struct GlowSpecular<S: Shape>: View {
+    let shape: S
+    @ObservedObject private var motion = GlowMotion.shared
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let t = motion.tilt
+        // 帯の中心（0...1、左上 → 右下の対角線上の位置）。傾きに合わせて最大 ±0.3 動く
+        let center = min(max(0.32 - (t.width + t.height) * 0.3, 0.05), 0.95)
+        let peak = scheme == .light ? 0.45 : 0.16
+        shape
+            .fill(LinearGradient(stops: [
+                .init(color: .white.opacity(0), location: max(center - 0.16, 0)),
+                .init(color: .white.opacity(peak), location: center),
+                .init(color: .white.opacity(0), location: min(center + 0.16, 1)),
+            ], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .blendMode(scheme == .light ? .normal : .plusLighter)
+            .allowsHitTesting(false)
+    }
+}
+
 /// すりガラスのタイル。光が当たる側が明るい。オンのときは全体が光る（ネガポジ反転）
 struct GlowTileBackground: View {
     let size: CGFloat
@@ -561,6 +584,7 @@ struct GlowIcon: View {
                 if isOn { picture.colorInvert() } else { picture }
             }
             .overlay { GlowSurfaceLight(shape: iconShape(size), size: size, hue: hue, glow: 0) }
+            .overlay { GlowSpecular(shape: iconShape(size)) }
             .overlay { GlowEdges(shape: iconShape(size), size: size, hue: hue, additive: false) }
             // 外にこぼれる光は画像の色ではなく、設定のグローの色のまま
             .background { GlowUnderLight(size: size) }
@@ -569,6 +593,7 @@ struct GlowIcon: View {
             let hue = item.baseHSB.map { $0.h / 360 }
             GlowTileBackground(size: size, hue: hue, isOn: isOn)
                 .overlay { GlowSymbol(name: item.symbol, size: size, hue: hue, isOn: isOn) }
+                .overlay { GlowSpecular(shape: iconShape(size)) }
                 .background { GlowUnderLight(size: size, hue: hue) }
         }
     }

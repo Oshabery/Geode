@@ -123,7 +123,6 @@ struct SettingsView: View {
     @AppStorage("backgroundColor") private var backgroundColor = Theme.defaultBackground
     @AppStorage("useCustomTint") private var useCustomTint = false
     @AppStorage("tintColor") private var tintColor = Theme.defaultTint
-    @AppStorage("glassIcons") private var glassIcons = false
     @AppStorage("labelWeight") private var labelWeight = Theme.defaultWeight
     @AppStorage("showGridLines") private var showGridLines = true
     @AppStorage("labelSpacing") private var labelSpacing = GridDefaults.labelSpacing
@@ -156,7 +155,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 SettingsGroup("外観", id: "appearance",
-                              footer: isGlow ? "グローは地に色の光が差すデザインです。明るさは「グローの明るさ」で選びます。上のモード・ガラス風アイコン・背景色は使われません（設定は残っていて、「標準」に戻すと元どおりになります）。" : nil) {
+                              footer: isGlow ? "グローは地に色の光が差すデザインです。明るさは「グローの明るさ」で選びます。上のモードと背景色は使われません（設定は残っていて、「標準」に戻すと元どおりになります）。" : nil) {
                     Picker("デザイン", selection: $uiStyle) {
                         ForEach(UIStyle.allCases) { Text($0.title).tag($0.rawValue) }
                     }
@@ -166,8 +165,6 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented)
                     .disabled(isGlow)
-                    Toggle("アイコンをガラス風にする", isOn: $glassIcons)
-                        .disabled(isGlow)
                     if isGlow {
                         GlowBrightnessPicker()
                         GlowColorPicker()
