@@ -247,7 +247,7 @@ struct LauncherGridView: View {
 
     /// グループ階層に入るときの動き。出だしは速く（押した瞬間にほぼ見える）、
     /// 終わりにかけて長くゆっくり落ち着く（余韻）
-    private static let openAnimation = Animation.timingCurve(0.2, 0.75, 0.1, 1.0, duration: 0.5)
+    private static let openAnimation = Animation.timingCurve(0.2, 0.75, 0.1, 1.0, duration: 0.3)
     /// 戻るときは短く、すっと消える
     private static let closeDuration = 0.22
     private static let closeAnimation = Animation.timingCurve(0.3, 0.0, 0.2, 1.0, duration: closeDuration)
@@ -287,7 +287,7 @@ struct LauncherGridView: View {
                     .foregroundStyle(.white)
                     // グループの背景は暗いので、グローのライトでも中身はダークの見た目で描く
                     .environment(\.colorScheme, groupScheme)
-                    .transition(.asymmetric(insertion: .scale(scale: 0.97, anchor: groupOrigin).combined(with: .opacity),
+                    .transition(.asymmetric(insertion: .scale(scale: 0.92, anchor: groupOrigin).combined(with: .opacity),
                                             removal: .opacity))
                     .zIndex(2)
                     // 押しているグループ自身は指の下で縮まないよう、別の層で薄く出すだけ
