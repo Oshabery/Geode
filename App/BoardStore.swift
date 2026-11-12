@@ -15,6 +15,8 @@ final class BoardStore: ObservableObject {
     /// ウィジェットからグループを開く要求
     @Published var requestedGroup: UUID?
     @Published var errorMessage: String?
+    /// グループ階層を開いている間 true（ContentView がグリッドを最前面に描くために使う）
+    @Published var groupLayerOpen = false
     /// 最後に実行したショートカット名（失敗して戻ってきたときの表示用）
     private var lastShortcutName = ""
 

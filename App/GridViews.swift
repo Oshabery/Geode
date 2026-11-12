@@ -102,12 +102,14 @@ struct GridLines: View {
     let metrics: GridMetrics
     @AppStorage("useCustomGridColor") private var useCustomGridColor = false
     @AppStorage("gridColor") private var gridColor = Theme.defaultGrid
+    /// グリッド線の濃さ（0...1）。1 でこれまでと同じ
+    @AppStorage("gridLineOpacity") private var lineOpacity = 1.0
 
     var body: some View {
         if useCustomGridColor {
-            path.stroke(gridColor.color, lineWidth: 1).allowsHitTesting(false)
+            path.stroke(gridColor.color.opacity(lineOpacity), lineWidth: 1).allowsHitTesting(false)
         } else {
-            path.stroke(.tint.opacity(0.35), lineWidth: 1).allowsHitTesting(false)
+            path.stroke(.tint.opacity(0.35 * lineOpacity), lineWidth: 1).allowsHitTesting(false)
         }
     }
 
@@ -177,6 +179,37 @@ struct TileView: View {
     }
 }
 
+/// グループ階層の背景。グリッドの枠で切れないよう、画面全体（上のボタン・下のボタン・画面の端まで）を覆う。
+/// 触っても反応しない（下のボタンなどの操作を邪魔しない）
+struct GroupBackdrop: View {
+    /// グリッドの画面上の位置
+    let gridFrame: CGRect
+    /// 押しているグループの中心（グリッド内の座標）
+    let focus: CGPoint?
+
+    var body: some View {
+        let screen = UIScreen.main.bounds.size
+        // 明るい部分の中心（画面の座標）。分からなければ画面中央
+        let center = focus.map { CGPoint(x: gridFrame.minX + $0.x, y: gridFrame.minY + $0.y) }
+            ?? CGPoint(x: screen.width / 2, y: screen.height / 2)
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial)
+                .environment(\.colorScheme, .dark)
+            // 中心は薄く、離れるほど暗い。どこを中心にしても画面を覆える大きさで描く
+            Rectangle()
+                .fill(RadialGradient(colors: [.black.opacity(0.08), .black.opacity(0.5)],
+                                     center: .center, startRadius: 50, endRadius: 460))
+                .frame(width: 2400, height: 2400)
+                .position(center)
+        }
+        .frame(width: screen.width, height: screen.height)
+        .clipped()
+        // グリッドの座標の中で、画面全体にぴったり重なる位置へ置く
+        .position(x: screen.width / 2 - gridFrame.minX, y: screen.height / 2 - gridFrame.minY)
+        .allowsHitTesting(false)
+    }
+}
+
 /// 通常モード。
 /// - アクション: タップで URL スキームを開く
 /// - グループ: 触れている間だけ 1 レイヤー上へ中身を展開。アプリの上まで指を滑らせて離すと起動。
@@ -212,11 +245,10 @@ struct LauncherGridView: View {
                 .foregroundStyle(.tint)
 
                 if let group = openGroup {
-                    // グループ展開時の背景: 暗いすりガラス
-                    Rectangle().fill(.ultraThinMaterial)
-                        .environment(\.colorScheme, .dark)
-                        .overlay(Color.black.opacity(0.35))
-                        .ignoresSafeArea()
+                    // グループ展開時の背景: 画面全体を覆う暗いすりガラス。
+                    // 押しているグループの周りだけ少し明るくして、1 枚上の階層に上がった感じを出す
+                    GroupBackdrop(gridFrame: geo.frame(in: .global),
+                                  focus: groupSlot.map { metrics.center($0) })
                     GridCells(metrics: metrics) { slot in
                         if slot == groupSlot {
                             TileView(item: group, metrics: metrics, highlighted: true)
@@ -237,6 +269,8 @@ struct LauncherGridView: View {
             .animation(.easeOut(duration: 0.06), value: openGroup?.id)
             .animation(.easeOut(duration: 0.1), value: highlighted)
         }
+        // 開いている間は ContentView がこのビューを最前面に描く（背景が下のボタンも覆えるように）
+        .onChange(of: openGroup?.id) { _, id in store.groupLayerOpen = id != nil }
         .onAppear(perform: openRequestedGroup)
         .onChange(of: store.requestedGroup) { _, _ in openRequestedGroup() }
     }

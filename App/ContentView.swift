@@ -71,6 +71,8 @@ struct ContentView: View {
                 EditGridView(slots: $store.board.slots, layout: store.board.layout, allowGroups: true)
             } else {
                 LauncherGridView()
+                    // グループを開いている間だけ最前面にして、暗い背景が下のボタンも覆うようにする
+                    .zIndex(store.groupLayerOpen ? 1 : 0)
             }
 
             DockBar(editing: editing)
@@ -126,6 +128,7 @@ struct SettingsView: View {
     @AppStorage("dockSpacing") private var dockSpacing = GridDefaults.dockSpacing
     @AppStorage("useCustomGridColor") private var useCustomGridColor = false
     @AppStorage("gridColor") private var gridColor = Theme.defaultGrid
+    @AppStorage("gridLineOpacity") private var gridLineOpacity = 1.0
     @State private var working = false
     @State private var message: String?
 
@@ -192,6 +195,10 @@ struct SettingsView: View {
                 Section {
                     Toggle("グリッド線を表示", isOn: $showGridLines)
                     if showGridLines {
+                        VStack(alignment: .leading) {
+                            Text("グリッド線の濃さ: \(Int((gridLineOpacity * 100).rounded()))%")
+                            Slider(value: $gridLineOpacity, in: 0.05...1, step: 0.05)
+                        }
                         Toggle("グリッド線の色を指定", isOn: $useCustomGridColor)
                         if useCustomGridColor { HSBEditor(color: $gridColor) }
                     }
