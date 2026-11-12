@@ -232,6 +232,8 @@ struct LauncherGridView: View {
     @State private var touchStart: Int?
     /// 指が触れている間 true（最初のイベントの判定用。触れた場所が格子の外だと touchStart は nil になる）
     @State private var touching = false
+    /// グループの中身が広がり出す中心（グリッド内の割合）。押した指の位置
+    @State private var groupOrigin: UnitPoint = .center
 
     /// グループ階層に入るときの動き。出だしは速く（押した瞬間にほぼ見える）、
     /// 終わりにかけて長くゆっくり落ち着く（余韻）
@@ -262,9 +264,10 @@ struct LauncherGridView: View {
                                   focus: groupSlot.map { metrics.center($0) })
                         .transition(.opacity)
                         .zIndex(1)
+                    // グループの中身: 押している指の位置から外へ広がるように出てくる。消えるときは薄くなるだけ
                     GridCells(metrics: metrics) { slot in
                         if slot == groupSlot {
-                            TileView(item: group, metrics: metrics, highlighted: true, parallax: true)
+                            Color.clear
                         } else {
                             TileView(item: group.children[slot], metrics: metrics, highlighted: highlighted == slot,
                                      switchState: group.children[slot].flatMap(store.switchState(for:)),
@@ -272,16 +275,30 @@ struct LauncherGridView: View {
                         }
                     }
                     .foregroundStyle(.white)
-                    // 少し小さいところからふわっと定位置へ。消えるときは薄くなるだけ
-                    .transition(.asymmetric(insertion: .scale(scale: 0.94).combined(with: .opacity),
+                    .transition(.asymmetric(insertion: .scale(scale: 0.35, anchor: groupOrigin).combined(with: .opacity),
                                             removal: .opacity))
                     .zIndex(2)
+                    // 押しているグループ自身は指の下で縮まないよう、別の層で薄く出すだけ
+                    GridCells(metrics: metrics) { slot in
+                        if slot == groupSlot {
+                            TileView(item: group, metrics: metrics, highlighted: true, parallax: true)
+                        } else {
+                            Color.clear
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .transition(.opacity)
+                    .zIndex(3)
                 }
             }
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { touchMoved(metrics.slot(at: $0.location)) }
+                    .onChanged { value in
+                        let origin = UnitPoint(x: value.location.x / max(geo.size.width, 1),
+                                               y: value.location.y / max(geo.size.height, 1))
+                        touchMoved(metrics.slot(at: value.location), origin: origin)
+                    }
                     .onEnded { touchEnded(metrics.slot(at: $0.location)) }
             )
             .animation(openGroup != nil ? Self.openAnimation : Self.closeAnimation, value: openGroup?.id)
@@ -303,11 +320,12 @@ struct LauncherGridView: View {
         .onChange(of: store.requestedGroup) { _, _ in openRequestedGroup() }
     }
 
-    private func touchMoved(_ slot: Int?) {
+    private func touchMoved(_ slot: Int?, origin: UnitPoint) {
         if !touching {
             touching = true
             touchStart = slot
             if openGroup == nil, let slot, let item = store.board.slots[slot], item.kind == .group {
+                groupOrigin = origin
                 openGroup = item
                 groupSlot = slot
                 // グループ階層に入った合図: カチッとした硬めの触覚
@@ -343,6 +361,7 @@ struct LauncherGridView: View {
         guard let id = store.requestedGroup else { return }
         store.requestedGroup = nil
         if let entry = store.board.slots.first(where: { $0.value.id == id }) {
+            groupOrigin = .center   // ウィジェットから開いたときは指の位置が無いので画面の中央から
             openGroup = entry.value
             groupSlot = entry.key
         }

@@ -51,15 +51,23 @@ enum GlowPalette {
 final class GlowMotion: ObservableObject {
     static let shared = GlowMotion()
 
-    /// 持ち始めの姿勢からの傾き（-1...1）。x: 左右、y: 前後。止めている間は .zero
+    /// 持ち始めの姿勢からの傾き（長さ 1 までのベクトル）。x: 左右、y: 前後。止めている間は .zero。
+    /// 光や反射など描き直しの重いものが使う。少しなめらかにし、約 30 回/秒まで
     @Published private(set) var tilt: CGSize = .zero
     /// 設定の「動きの強さ」
     var strength: Double = 1
 
+    /// 実機で向きが不自然なときは、ここの符号を変える
+    static let signX: Double = 1
+    static let signY: Double = 1
+
     private let manager = CMMotionManager()
-    /// 基準の姿勢（重力の向き）。開始時の持ち方を基準にし、ゆっくり今の持ち方へ寄せる
+    /// 基準の角度（開始時の持ち方。ゆっくり今の持ち方へ寄せる）
     private var neutral: (x: Double, y: Double)?
+    private var lastPitch: Double = 0
     private var smoothed: (x: Double, y: Double) = (0, 0)
+    private var fast: (x: Double, y: Double) = (0, 0)
+    private var frame = 0
 
     private init() {}
 
@@ -68,11 +76,12 @@ final class GlowMotion: ObservableObject {
               !UIAccessibility.isReduceMotionEnabled else { return }
         neutral = nil
         smoothed = (0, 0)
-        manager.deviceMotionUpdateInterval = 1.0 / 30
+        fast = (0, 0)
+        manager.deviceMotionUpdateInterval = 1.0 / 60
         manager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
-            guard let gravity = motion?.gravity else { return }
-            let gx = gravity.x, gy = gravity.y
-            Task { @MainActor in self?.update(gx: gx, gy: gy) }
+            guard let g = motion?.gravity else { return }
+            let gx = g.x, gy = g.y, gz = g.z
+            Task { @MainActor in self?.update(gx: gx, gy: gy, gz: gz) }
         }
     }
 
@@ -80,22 +89,58 @@ final class GlowMotion: ObservableObject {
         if manager.isDeviceMotionActive { manager.stopDeviceMotionUpdates() }
         neutral = nil
         if tilt != .zero { tilt = .zero }
+        GlowParallaxMotion.shared.set(.zero)
     }
 
-    private func update(gx: Double, gy: Double) {
+    /// 角度の差（-π...π に折り返す）
+    private static func delta(_ a: Double, _ b: Double) -> Double { remainder(a - b, 2 * .pi) }
+
+    private func update(gx: Double, gy: Double, gz: Double) {
         guard manager.isDeviceMotionActive else { return }
-        var base = neutral ?? (gx, gy)
+        // 重力の向きを角度に直す。左右は asin、前後は y-z 面での角度にして、
+        // 立てて持っても寝かせて持っても同じ感度にする（斜めに傾けたときに縦の動きが弱くならないように）
+        let roll = asin(max(-1, min(1, gx)))
+        let yz = sqrt(gy * gy + gz * gz)
+        let pitch = yz > 0.2 ? atan2(gy, -gz) : lastPitch   // 横向きに近いときは前後の角度が不安定なので保つ
+        lastPitch = pitch
+
+        var base = neutral ?? (roll, pitch)
         // 寝転んだり置いたりして持ち方が変わっても、10 秒ほどで新しい姿勢が基準になる。
         // 傾けたまま持っていると光がゆっくり戻る速さもこの係数で決まる
-        base = (base.x * 0.997 + gx * 0.003, base.y * 0.997 + gy * 0.003)
+        base = (base.x + Self.delta(roll, base.x) * 0.0015, base.y + Self.delta(pitch, base.y) * 0.0015)
         neutral = base
-        let rawX = max(-1, min(1, (gx - base.x) * 2.2 * strength))
-        let rawY = max(-1, min(1, (gy - base.y) * 2.2 * strength))
-        smoothed = (smoothed.x * 0.75 + rawX * 0.25, smoothed.y * 0.75 + rawY * 0.25)
+
+        var rawX = Self.delta(roll, base.x) * 2.2 * strength * Self.signX
+        var rawY = Self.delta(pitch, base.y) * 2.2 * strength * Self.signY
+        // 斜めでも大きくなりすぎないよう、ベクトルの長さで 1 までに抑える
+        let length = sqrt(rawX * rawX + rawY * rawY)
+        if length > 1 { rawX /= length; rawY /= length }
+
+        // アイコンの視差: ほぼ遅れなく追従させる（軽い処理なので毎回）
+        fast = (fast.x * 0.35 + rawX * 0.65, fast.y * 0.35 + rawY * 0.65)
+        GlowParallaxMotion.shared.set(CGSize(width: fast.x, height: fast.y))
+
+        // 光や反射: 少しなめらかにして、描き直しは 2 回に 1 回
+        smoothed = (smoothed.x * 0.6 + rawX * 0.4, smoothed.y * 0.6 + rawY * 0.4)
+        frame += 1
+        guard frame % 2 == 0 else { return }
         let next = CGSize(width: smoothed.x, height: smoothed.y)
-        // 細かい揺れでは描き直さない
         if abs(next.width - tilt.width) > 0.006 || abs(next.height - tilt.height) > 0.006 {
             tilt = next
+        }
+    }
+}
+
+/// アイコンの視差だけに使う、速く追従する傾き。光の描き直しと分けて、アイコンのずれだけを毎回更新する
+@MainActor
+final class GlowParallaxMotion: ObservableObject {
+    static let shared = GlowParallaxMotion()
+    @Published private(set) var tilt: CGSize = .zero
+    private init() {}
+
+    func set(_ value: CGSize) {
+        if abs(value.width - tilt.width) > 0.002 || abs(value.height - tilt.height) > 0.002 || value == .zero {
+            if value != tilt { tilt = value }
         }
     }
 }
@@ -109,8 +154,14 @@ struct GlowLight {
     let dy: CGFloat
     /// 傾きの大きさ（0...1）
     let amount: CGFloat
+    /// 前後の傾き（-1...1、向きの符号込み）。光の位置を上下にずらすのに使う
+    let ty: CGFloat
+    /// 左右の傾き（-1...1、向きの符号込み）
+    let tx: CGFloat
 
     init(_ tilt: CGSize) {
+        tx = Self.direction * tilt.width
+        ty = Self.direction * tilt.height
         let x = Self.direction * tilt.width * 1.1
         let y = 1 + Self.direction * tilt.height * 0.6
         let length = max(sqrt(x * x + y * y), 0.001)
@@ -131,7 +182,7 @@ struct GlowLight {
 /// 見た目だけずらす（当たり判定の位置は変えない）。傾きが 0 のとき、グロー以外では動かない
 struct GlowParallax: ViewModifier {
     var enabled: Bool
-    @ObservedObject private var motion = GlowMotion.shared
+    @ObservedObject private var motion = GlowParallaxMotion.shared
     /// ずれる最大の幅 (pt)。設定の「アイコンの浮き上がり」
     @AppStorage("glowParallax") private var amount = 8.0
     /// 傾けた方向と逆へずらす。実機で不自然ならここの符号を変える
@@ -191,7 +242,8 @@ struct GlowBackground: View {
         let color = Color(hue: themeHue / 360, saturation: 0.85, brightness: 0.9)
         // 傾きに合わせて光の中心を左右に寄せる（上下は少しだけ）
         let shiftX = light.dx * 0.5
-        let shiftY = (light.dy - 1) * 0.25
+        // 前後に傾けたときも光が上下に動くように（斜めに傾けると斜めに動く）
+        let shiftY = light.ty * 0.12
         ZStack {
             Self.base
             // 強いときは色の光が画面全体にうっすら回る
@@ -341,7 +393,7 @@ struct GlowUnderLight: View {
             .scaleEffect(x: 1, y: 0.45)
             // 傾き 0 ではタイルの真下。そこから少しだけ光の側へ寄る
             .offset(x: light.dx * size * Self.travel,
-                    y: size * 0.45 + (light.dy - 1) * size * Self.travel)
+                    y: size * 0.45 + light.ty * size * Self.travel)
             .allowsHitTesting(false)
     }
 }
