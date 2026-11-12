@@ -261,41 +261,36 @@ struct GlowBackground: View {
     var body: some View {
         let light = GlowLight(motion.tilt)
         let f = GlowPalette.factor(intensity)
-        ZStack {
-            if scheme == .light {
-                lightBody(light, f)
-            } else {
-                darkBody(light, f)
-            }
-            if gradient {
-                gradientLights(light, f, isLight: scheme == .light)
-            }
+        if scheme == .light {
+            lightBody(light, f)
+        } else {
+            darkBody(light, f)
         }
     }
 
-    /// グラデーション: 左上からコーラル〜ピンク、右下からブルー〜シアンの光を足す（アプリアイコンの配色）
-    private func gradientLights(_ light: GlowLight, _ f: Double, isLight: Bool) -> some View {
-        let warm = Color(hue: GlowPalette.hue(themeHue, 120), saturation: isLight ? 0.5 : 0.75, brightness: 1)
-        let pink = Color(hue: GlowPalette.hue(themeHue, 70), saturation: isLight ? 0.45 : 0.7, brightness: 1)
-        let cool = Color(hue: GlowPalette.hue(themeHue, -40), saturation: isLight ? 0.5 : 0.8, brightness: 1)
-        let strength = min((isLight ? 0.35 : 0.45) * pow(f, 0.8), 0.85)
-        let shiftX = light.dx * 0.5
-        let shiftY = light.ty * 0.12
-        return ZStack {
-            RadialGradient(colors: [warm.opacity(strength), pink.opacity(strength * 0.4), .clear],
-                           center: UnitPoint(x: -0.05 + shiftX, y: 0.32 + shiftY),
-                           startRadius: 0, endRadius: 420 * (0.55 + 0.45 * f))
-            RadialGradient(colors: [cool.opacity(strength), .clear],
-                           center: UnitPoint(x: 1.05 + shiftX, y: 0.82 + shiftY),
-                           startRadius: 0, endRadius: 460 * (0.55 + 0.45 * f))
+    /// 下から照らす光。グラデのときは、光の色が左から右へ 3 色に移り変わる
+    /// （ピンク → パープル → ブルー。アプリアイコンの配色。色相のスライダーで全体がずれる）
+    @ViewBuilder
+    private func bottomLight(_ color: Color, opacity: Double, center: UnitPoint, radius: CGFloat,
+                             saturation: Double, brightness: Double, shiftX: CGFloat) -> some View {
+        if gradient {
+            let colors = [70.0, 20.0, -45.0].map {
+                Color(hue: GlowPalette.hue(themeHue, $0), saturation: saturation, brightness: brightness)
+            }
+            LinearGradient(colors: colors,
+                           startPoint: UnitPoint(x: -0.1 + shiftX, y: 0.5),
+                           endPoint: UnitPoint(x: 1.1 + shiftX, y: 0.5))
+                .mask(RadialGradient(colors: [.white.opacity(opacity), .clear],
+                                     center: center, startRadius: 0, endRadius: radius))
+        } else {
+            RadialGradient(colors: [color.opacity(opacity), .clear],
+                           center: center, startRadius: 0, endRadius: radius)
         }
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
     }
 
     /// ライト: 明るい地に、下から淡い色の光
     private func lightBody(_ light: GlowLight, _ f: Double) -> some View {
-        let color = Color(hue: themeHue / 360, saturation: 0.55, brightness: 1)
+        let color = Color(hue: gradient ? GlowPalette.hue(themeHue, 20) : themeHue / 360, saturation: 0.55, brightness: 1)
         let shiftX = light.dx * 0.5
         let shiftY = light.ty * 0.12
         return ZStack {
@@ -303,15 +298,15 @@ struct GlowBackground: View {
             if f > 1 {
                 color.opacity(0.06 * (f - 1))
             }
-            RadialGradient(colors: [color.opacity(min(0.45 * pow(f, 0.8), 0.85)), .clear],
-                           center: UnitPoint(x: 0.5 + shiftX, y: 1.08 + shiftY),
-                           startRadius: 0, endRadius: 620 * (0.55 + 0.45 * f))
+            bottomLight(color, opacity: min(0.45 * pow(f, 0.8), 0.85),
+                        center: UnitPoint(x: 0.5 + shiftX, y: 1.08 + shiftY),
+                        radius: 620 * (0.55 + 0.45 * f), saturation: 0.55, brightness: 1, shiftX: shiftX)
         }
         .ignoresSafeArea()
     }
 
     private func darkBody(_ light: GlowLight, _ f: Double) -> some View {
-        let color = Color(hue: themeHue / 360, saturation: 0.85, brightness: 0.9)
+        let color = Color(hue: gradient ? GlowPalette.hue(themeHue, 20) : themeHue / 360, saturation: 0.85, brightness: 0.9)
         // 傾きに合わせて光の中心を左右に寄せる（上下は少しだけ）
         let shiftX = light.dx * 0.5
         // 前後に傾けたときも光が上下に動くように（斜めに傾けると斜めに動く）
@@ -322,9 +317,9 @@ struct GlowBackground: View {
             if f > 1 {
                 color.opacity(0.09 * (f - 1))
             }
-            RadialGradient(colors: [color.opacity(min(0.55 * pow(f, 0.8), 0.92)), .clear],
-                           center: UnitPoint(x: 0.5 + shiftX, y: 1.08 + shiftY),
-                           startRadius: 0, endRadius: 620 * (0.55 + 0.45 * f))
+            bottomLight(color, opacity: min(0.55 * pow(f, 0.8), 0.92),
+                        center: UnitPoint(x: 0.5 + shiftX, y: 1.08 + shiftY),
+                        radius: 620 * (0.55 + 0.45 * f), saturation: 0.85, brightness: 0.9, shiftX: shiftX)
             RadialGradient(colors: [Color.white.opacity(min(0.22 * pow(f, 0.7), 0.5)), .clear],
                            center: UnitPoint(x: 0.5 + shiftX * 1.15, y: 1.02 + shiftY),
                            startRadius: 0, endRadius: 260 * (0.7 + 0.3 * f))
@@ -446,24 +441,27 @@ struct GlowSurfaceLight<S: Shape>: View {
     }
 }
 
-/// アイコンの表面に映り込む細い光の帯。傾けると、光と反対の向きへ表面をすべるように動く。
-/// 傾けていないときは左上寄りに薄く乗る
+/// アイコンの表面に映り込む丸い光（照明の映り込み）。傾けると、光と反対の向きへ表面をすべるように動く。
+/// 傾けていないときは左上寄りに薄く乗る。端に境界が出ないよう、なだらかに透明になる
 struct GlowSpecular<S: Shape>: View {
     let shape: S
+    let size: CGFloat
     @ObservedObject private var motion = GlowMotion.shared
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let t = motion.tilt
-        // 帯の中心（0...1、左上 → 右下の対角線上の位置）。傾きに合わせて最大 ±0.3 動く
-        let center = min(max(0.32 - (t.width + t.height) * 0.3, 0.05), 0.95)
-        let peak = scheme == .light ? 0.45 : 0.16
+        let x = min(max(0.3 - t.width * 0.35, 0.05), 0.95)
+        let y = min(max(0.26 - t.height * 0.35, 0.05), 0.95)
+        let peak = scheme == .light ? 0.5 : 0.2
         shape
-            .fill(LinearGradient(stops: [
-                .init(color: .white.opacity(0), location: max(center - 0.16, 0)),
-                .init(color: .white.opacity(peak), location: center),
-                .init(color: .white.opacity(0), location: min(center + 0.16, 1)),
-            ], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .fill(RadialGradient(stops: [
+                .init(color: .white.opacity(peak), location: 0),
+                .init(color: .white.opacity(peak * 0.6), location: 0.25),
+                .init(color: .white.opacity(peak * 0.25), location: 0.5),
+                .init(color: .white.opacity(peak * 0.07), location: 0.75),
+                .init(color: .white.opacity(0), location: 1),
+            ], center: UnitPoint(x: x, y: y), startRadius: 0, endRadius: size * 0.5))
             .blendMode(scheme == .light ? .normal : .plusLighter)
             .allowsHitTesting(false)
     }
@@ -584,7 +582,7 @@ struct GlowIcon: View {
                 if isOn { picture.colorInvert() } else { picture }
             }
             .overlay { GlowSurfaceLight(shape: iconShape(size), size: size, hue: hue, glow: 0) }
-            .overlay { GlowSpecular(shape: iconShape(size)) }
+            .overlay { GlowSpecular(shape: iconShape(size), size: size) }
             .overlay { GlowEdges(shape: iconShape(size), size: size, hue: hue, additive: false) }
             // 外にこぼれる光は画像の色ではなく、設定のグローの色のまま
             .background { GlowUnderLight(size: size) }
@@ -593,7 +591,7 @@ struct GlowIcon: View {
             let hue = item.baseHSB.map { $0.h / 360 }
             GlowTileBackground(size: size, hue: hue, isOn: isOn)
                 .overlay { GlowSymbol(name: item.symbol, size: size, hue: hue, isOn: isOn) }
-                .overlay { GlowSpecular(shape: iconShape(size)) }
+                .overlay { GlowSpecular(shape: iconShape(size), size: size) }
                 .background { GlowUnderLight(size: size, hue: hue) }
         }
     }
