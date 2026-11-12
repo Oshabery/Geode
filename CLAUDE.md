@@ -27,6 +27,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 - `tools/import_installed_apps.py` は `xcrun devicectl` の JSON 出力形式を記憶で書いており、実行確認していない
 - ウィジェット（`Widget/LaunchWidget.swift`）の実機での見た目と動作
 - 本体の操作（`App/SystemActions.swift`）: ショートカット App のアクション名（日本語）と消音モードのアクションの有無は記憶ベース。ショートカット経由のライトが点いたままになるか。Geode で上げた画面の明るさが Geode を離れても保たれるか。ミュージックの操作で許可を求められるか、再生状態の通知が届くか
+- グローの傾き: 光が動く向きが自然か（`GlowLight.direction` の符号）、滑らかさ、寝転んだときの挙動、発熱や電池の減り
 
 変更したらビルドして確認すること。シミュレータでは他アプリの URL スキームをほとんど開けない（「起動エラー」になるのは正常）ので、起動の確認は実機で行う。
 
@@ -66,7 +67,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 - **実機で確認済み**: Geode で直接点けたライトは Geode を離れると消える（そのためショートカット経由のライトも用意）。ライトの使用でカメラの許可は求められない。ショートカット実行後は `x-success=geode://` で Geode に戻る
 - **スイッチ**: オン / オフの操作は、オンの間アイコンをネガポジ反転して示す（シンボルは記号と下地の色を入れ替え、画像は色を反転。小さなスイッチ表示はユーザーの指定でやめた）。押すと `.rigid` の触覚を返す（`BoardStore.launch` だけで行う）。Geode で直接の操作（`DirectKind.isSwitch`）は URL から判定し、実際の状態を読む（`directActionPerformed` 通知、前面復帰時、ミュージックの再生状態通知で `refreshDirectStates`）。ショートカット経由は `isToggle == true` で、状態を読めないので推定値。`geode://` への成功の戻りで切り替え、設定画面で手動補正できる。推定値は `UserDefaults` の `toggleStates`（盤面とは別）
 - **本体の操作**: Geode 自身が実行する操作は `geode://<操作名>` の URL で表し（`DirectKind`: torch / brightness / awake / music-playpause / music-next / music-previous / copy?text=）、知らない操作名はエラーにする。電話・メッセージ・メール・FaceTime・Web・経路は通常の URL（tel: など）を組み立てる。`SystemActions.performIfBuiltIn` を `BoardStore.launch` とテスト起動の両方から通す。消音・Wi-Fi など iOS が公開 API を持たない操作は、ショートカット App のショートカットを `shortcuts://x-callback-url/run-shortcut?name=` で実行する
-- **デザイン**: 設定の「デザイン」（`@AppStorage("uiStyle")`）で「標準」と「グロー」を切り替える。標準を選んでいる間はこれまでの見た目を一切変えないこと（ユーザーの条件。グローの描画は `App/GlowStyle.swift` に置き、各所は `if/else` で分岐）。グローの色は `@AppStorage("glowHue")`（色相 0–360、プリセットは `GlowPalette.presets`）で、ベース色を指定したアイテムはその色相を優先する。グローは表示時だけダーク固定にし、保存済みの外観・背景色・ガラス風アイコンの設定は書き換えない。グローのタイルではぼかしと影を使わない（グループ表示を重くしないため）。導入前の状態はコミット `793cda4`
+- **デザイン**: 設定の「デザイン」（`@AppStorage("uiStyle")`）で「標準」と「グロー」を切り替える。標準を選んでいる間はこれまでの見た目を一切変えないこと（ユーザーの条件。グローの描画は `App/GlowStyle.swift` に置き、各所は `if/else` で分岐）。グローの色は `@AppStorage("glowHue")`（色相 0–360、プリセットは `GlowPalette.presets`）で、ベース色を指定したアイテムはその色相を優先する。グローは表示時だけダーク固定にし、保存済みの外観・背景色・ガラス風アイコンの設定は書き換えない。グローのタイルではぼかしと影を使わない（グループ表示を重くしないため）。傾き（`GlowMotion`、CoreMotion の重力）で光の向き（`GlowLight`）を動かす。傾き 0 では真下からの光で、導入前のグローと同じ見た目になること。傾きは末端の小さなビュー（`GlowEdges` / `GlowSurfaceLight` / `GlowUnderLight` / `GlowBackground`）だけが購読し、`ContentView` や `TileView` では購読しない（毎回グリッド全体が描き直されるため）。縁の屈折の色は下の色相（グローの色 / ベース色 / 画像の代表色）に合わせ、加算（`.plusLighter`）で重ねる。導入前の状態はコミット `793cda4`
 - **強調ガラス**: 虹色の縁などの強調表現（`GlassRim` / `GlassVolume`）はアプリアイコンだけに使う。ボタンなどの UI は標準の Liquid Glass
 
 ## 作業の進め方

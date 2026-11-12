@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreMotion
 
 /// UI のデザイン。設定の「デザイン」で切り替える（@AppStorage("uiStyle")）。
 /// standard を選んでいる間は、これまでのデザインから何も変えない。グローの描画はすべてこのファイルに置く
@@ -36,19 +37,132 @@ enum GlowPalette {
     ]
 }
 
+// MARK: 傾き
+
+/// 端末の傾きを読んで、グローの光の向きに使う。
+/// グローを選んでいて、設定がオンで、アプリが前面のときだけ動かす（ContentView が開始・停止する）
+@MainActor
+final class GlowMotion: ObservableObject {
+    static let shared = GlowMotion()
+
+    /// 持ち始めの姿勢からの傾き（-1...1）。x: 左右、y: 前後。止めている間は .zero
+    @Published private(set) var tilt: CGSize = .zero
+    /// 設定の「動きの強さ」
+    var strength: Double = 1
+
+    private let manager = CMMotionManager()
+    /// 基準の姿勢（重力の向き）。開始時の持ち方を基準にし、ゆっくり今の持ち方へ寄せる
+    private var neutral: (x: Double, y: Double)?
+    private var smoothed: (x: Double, y: Double) = (0, 0)
+
+    private init() {}
+
+    func start() {
+        guard manager.isDeviceMotionAvailable, !manager.isDeviceMotionActive,
+              !UIAccessibility.isReduceMotionEnabled else { return }
+        neutral = nil
+        smoothed = (0, 0)
+        manager.deviceMotionUpdateInterval = 1.0 / 30
+        manager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
+            guard let gravity = motion?.gravity else { return }
+            let gx = gravity.x, gy = gravity.y
+            Task { @MainActor in self?.update(gx: gx, gy: gy) }
+        }
+    }
+
+    func stop() {
+        if manager.isDeviceMotionActive { manager.stopDeviceMotionUpdates() }
+        neutral = nil
+        if tilt != .zero { tilt = .zero }
+    }
+
+    private func update(gx: Double, gy: Double) {
+        guard manager.isDeviceMotionActive else { return }
+        var base = neutral ?? (gx, gy)
+        // 寝転んだり置いたりして持ち方が変わっても、数秒で新しい姿勢が基準になる
+        base = (base.x * 0.99 + gx * 0.01, base.y * 0.99 + gy * 0.01)
+        neutral = base
+        let rawX = max(-1, min(1, (gx - base.x) * 2.2 * strength))
+        let rawY = max(-1, min(1, (gy - base.y) * 2.2 * strength))
+        smoothed = (smoothed.x * 0.75 + rawX * 0.25, smoothed.y * 0.75 + rawY * 0.25)
+        let next = CGSize(width: smoothed.x, height: smoothed.y)
+        // 細かい揺れでは描き直さない
+        if abs(next.width - tilt.width) > 0.006 || abs(next.height - tilt.height) > 0.006 {
+            tilt = next
+        }
+    }
+}
+
+/// 傾きから決まる光の向き。傾き 0 のときは真下から（これまでのグローと同じ見た目）
+struct GlowLight {
+    /// 傾けた方向へ光が動くか、逆へ動くか。実機で不自然ならここの符号を変える
+    static let direction: CGFloat = -1
+
+    let dx: CGFloat
+    let dy: CGFloat
+    /// 傾きの大きさ（0...1）
+    let amount: CGFloat
+
+    init(_ tilt: CGSize) {
+        let x = Self.direction * tilt.width * 1.1
+        let y = 1 + Self.direction * tilt.height * 0.6
+        let length = max(sqrt(x * x + y * y), 0.001)
+        dx = x / length
+        dy = y / length
+        amount = min(1, sqrt(tilt.width * tilt.width + tilt.height * tilt.height))
+    }
+
+    /// 光が当たる側の端（傾き 0 で .bottom）
+    var lit: UnitPoint { UnitPoint(x: 0.5 + dx * 0.5, y: 0.5 + dy * 0.5) }
+    /// 光の反対側の端（傾き 0 で .top）
+    var far: UnitPoint { UnitPoint(x: 0.5 - dx * 0.5, y: 0.5 - dy * 0.5) }
+    /// 光の向きの角度（SwiftUI の角度。傾き 0 で 90°= 真下）
+    var angle: Angle { .radians(Double(atan2(dy, dx))) }
+}
+
+// MARK: 色
+
+/// アイコン画像の代表的な色相（0–1）。灰色に近い画像は nil。毎フレーム呼ばれるのでキャッシュする
+private var imageHueCache: [String: Double] = [:]
+
+@MainActor
+func glowImageHue(_ file: String) -> Double? {
+    if let hit = imageHueCache[file] { return hit < 0 ? nil : hit }
+    var result = -1.0
+    if let cg = loadIconImage(file)?.cgImage {
+        var pixel = [UInt8](repeating: 0, count: 4)
+        if let context = CGContext(data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                   space: CGColorSpaceCreateDeviceRGB(),
+                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+            context.interpolationQuality = .medium
+            context.draw(cg, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            var h: CGFloat = 0, sat: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            let color = UIColor(red: CGFloat(pixel[0]) / 255, green: CGFloat(pixel[1]) / 255,
+                                blue: CGFloat(pixel[2]) / 255, alpha: 1)
+            if color.getHue(&h, saturation: &sat, brightness: &b, alpha: &a), sat > 0.18, b > 0.15 {
+                result = Double(h)
+            }
+        }
+    }
+    imageHueCache[file] = result
+    return result < 0 ? nil : result
+}
+
 // MARK: 背景
 
-/// 黒地に、下から青い光が差し込む背景
+/// 黒地に、下から光が差し込む背景。傾けると光の位置が少し動く
 struct GlowBackground: View {
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
+    @ObservedObject private var motion = GlowMotion.shared
 
     var body: some View {
+        let light = GlowLight(motion.tilt)
         ZStack {
             Color.black
             RadialGradient(colors: [Color(hue: themeHue / 360, saturation: 0.85, brightness: 0.9).opacity(0.55), .clear],
-                           center: UnitPoint(x: 0.5, y: 1.08), startRadius: 0, endRadius: 620)
+                           center: UnitPoint(x: 0.5 + light.dx * 0.25, y: 1.08), startRadius: 0, endRadius: 620)
             RadialGradient(colors: [Color.white.opacity(0.22), .clear],
-                           center: UnitPoint(x: 0.5, y: 1.02), startRadius: 0, endRadius: 260)
+                           center: UnitPoint(x: 0.5 + light.dx * 0.3, y: 1.02), startRadius: 0, endRadius: 260)
         }
         .ignoresSafeArea()
     }
@@ -56,37 +170,77 @@ struct GlowBackground: View {
 
 // MARK: タイル
 
-/// タイルの縁: 下ほど明るい細い縁 + 右下の角に虹色の屈折。ぼかしは使わない（グループ表示を重くしないため）
+/// タイルの縁。光が当たる側ほど明るい細い縁と、その手前の角に出る色の屈折。
+/// 屈折の色は下のタイルの色相に合わせ、加算で重ねる（光として足す）。ぼかしは使わない
 struct GlowEdges<S: InsettableShape>: View {
     let shape: S
     let size: CGFloat
+    /// 下にあるタイルの色相（0–1）。nil なら設定のグローの色
+    var hue: Double? = nil
     var dim = false
+    @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
+    @ObservedObject private var motion = GlowMotion.shared
 
-    private var prism: AngularGradient {
-        AngularGradient(stops: [
+    /// 下の色を中心にした、隣り合う色のスペクトル
+    private func prism(_ light: GlowLight) -> AngularGradient {
+        let base = hue ?? themeHue / 360
+        func tone(_ offset: Double, _ saturation: Double, _ brightness: Double) -> Color {
+            let h = (base + offset).truncatingRemainder(dividingBy: 1)
+            return Color(hue: h < 0 ? h + 1 : h, saturation: saturation, brightness: brightness)
+        }
+        let end = light.angle
+        return AngularGradient(stops: [
             .init(color: .clear, location: 0.00),
-            .init(color: Color(hue: 0.62, saturation: 0.9, brightness: 1), location: 0.18),
-            .init(color: Color(hue: 0.52, saturation: 0.8, brightness: 1), location: 0.32),
-            .init(color: Color(hue: 0.15, saturation: 0.8, brightness: 1), location: 0.50),
-            .init(color: Color(hue: 0.07, saturation: 0.9, brightness: 1), location: 0.66),
-            .init(color: Color(hue: 0.98, saturation: 0.8, brightness: 0.9), location: 0.80),
+            .init(color: tone(-0.10, 0.9, 1), location: 0.18),
+            .init(color: tone(-0.04, 0.65, 1), location: 0.32),
+            .init(color: tone(0.05, 0.45, 1), location: 0.50),
+            .init(color: tone(0.13, 0.8, 1), location: 0.66),
+            .init(color: tone(0.22, 0.85, 0.95), location: 0.80),
             .init(color: .clear, location: 1.00),
-        ], center: .center, startAngle: .degrees(0), endAngle: .degrees(90))
+        ], center: .center, startAngle: end - .degrees(90), endAngle: end)
     }
 
     var body: some View {
+        let light = GlowLight(motion.tilt)
         ZStack {
-            shape.strokeBorder(prism, lineWidth: max(1.5, size * 0.035))
+            shape.strokeBorder(prism(light), lineWidth: max(1.5, size * 0.035))
                 .opacity(dim ? 0.25 : 0.75)
+                .blendMode(.plusLighter)
             shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.12), .white.opacity(dim ? 0.35 : 0.8)],
-                                              startPoint: .top, endPoint: .bottom),
+                                              startPoint: light.far, endPoint: light.lit),
                                lineWidth: max(1, size * 0.012))
         }
         .allowsHitTesting(false)
     }
 }
 
-/// すりガラスのタイル。下から光が当たったように下側が明るい。オンのときは全体が光る（ネガポジ反転）
+/// タイルの面に乗る光と影。光の側に明るい反射、反対側に映り込み、傾けたときだけ反対側に影が出る
+struct GlowSurfaceLight<S: Shape>: View {
+    let shape: S
+    let size: CGFloat
+    var hue: Double? = nil
+    /// 光の側の反射の強さ
+    var glow: Double = 0.42
+    @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
+    @ObservedObject private var motion = GlowMotion.shared
+
+    var body: some View {
+        let light = GlowLight(motion.tilt)
+        let base = hue ?? themeHue / 360
+        ZStack {
+            shape.fill(RadialGradient(
+                colors: [Color(hue: base, saturation: 0.3, brightness: 1).opacity(glow), .clear],
+                center: light.lit, startRadius: 0, endRadius: size * 0.75))
+            shape.fill(LinearGradient(colors: [.white.opacity(0.1), .clear],
+                                      startPoint: light.far, endPoint: .center))
+            shape.fill(LinearGradient(colors: [.black.opacity(0.35 * light.amount), .clear],
+                                      startPoint: light.far, endPoint: .center))
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// すりガラスのタイル。光が当たる側が明るい。オンのときは全体が光る（ネガポジ反転）
 struct GlowTileBackground: View {
     let size: CGFloat
     /// 色相（0–1）。nil なら設定のグローの色
@@ -104,67 +258,62 @@ struct GlowTileBackground: View {
                Color(hue: hue, saturation: 0.85, brightness: dim ? 0.2 : 0.42)]
         ZStack {
             shape.fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
-            shape.fill(RadialGradient(
-                colors: [Color(hue: hue, saturation: 0.3, brightness: 1).opacity(isOn ? 0.6 : (dim ? 0.12 : 0.42)), .clear],
-                center: .bottom, startRadius: 0, endRadius: size * 0.75))
-            shape.fill(LinearGradient(colors: [.white.opacity(0.1), .clear], startPoint: .top, endPoint: .center))
-            GlowEdges(shape: shape, size: size, dim: dim)
+            GlowSurfaceLight(shape: shape, size: size, hue: hue, glow: isOn ? 0.6 : (dim ? 0.12 : 0.42))
+            GlowEdges(shape: shape, size: size, hue: hue, dim: dim)
         }
         .frame(width: size, height: size)
     }
 }
 
-/// タイルの下にこぼれる光（ぼかしの代わりに放射グラデーション）
+/// タイルの外にこぼれる光（ぼかしの代わりに放射グラデーション）。光の側へ出る
 struct GlowUnderLight: View {
     let size: CGFloat
     var hue: Double? = nil
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
+    @ObservedObject private var motion = GlowMotion.shared
 
     var body: some View {
         let hue = self.hue ?? themeHue / 360
+        let light = GlowLight(motion.tilt)
         Ellipse()
             .fill(RadialGradient(colors: [Color(hue: hue, saturation: 0.7, brightness: 1).opacity(0.4), .clear],
                                  center: .center, startRadius: 0, endRadius: size * 0.7))
             .frame(width: size * 1.4, height: size * 0.6)
-            .offset(y: size * 0.45)
+            .offset(x: light.dx * size * 0.45, y: light.dy * size * 0.45)
             .allowsHitTesting(false)
     }
 }
 
 /// グローのデザインでのアイコン。
 /// - シンボル: すりガラスのタイルに銀色の記号。オンでは明るいタイルに濃い記号（ネガポジ反転）
-/// - 画像: 色はそのまま、縁と下の光を重ねる。オンでは色を反転
+/// - 画像: 色はそのまま、縁と光を重ねる。縁の色は画像の代表色に合わせる。オンでは色を反転
 /// - ベース色を指定したアイテムは、その色相のガラスになる
 struct GlowIcon: View {
     let item: LaunchItem
     let size: CGFloat
     var isOn = false
 
-    /// ベース色を指定したアイテムはその色相、それ以外は設定のグローの色（nil）
-    private var hue: Double? { item.baseHSB.map { $0.h / 360 } }
-
     var body: some View {
-        Group {
-            if let file = item.iconFile, let img = loadIconImage(file) {
-                let picture = Image(uiImage: img)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: size, height: size)
-                    .clipShape(iconShape(size))
-                Group {
-                    if isOn { picture.colorInvert() } else { picture }
-                }
-                .overlay {
-                    iconShape(size).fill(LinearGradient(colors: [.white.opacity(0.14), .clear],
-                                                        startPoint: .top, endPoint: .center))
-                }
-                .overlay { GlowEdges(shape: iconShape(size), size: size) }
-            } else {
-                GlowTileBackground(size: size, hue: hue, isOn: isOn)
-                    .overlay { GlowSymbol(name: item.symbol, size: size, hue: hue, isOn: isOn) }
+        if let file = item.iconFile, let img = loadIconImage(file) {
+            let hue = glowImageHue(file)
+            let picture = Image(uiImage: img)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(iconShape(size))
+            Group {
+                if isOn { picture.colorInvert() } else { picture }
             }
+            .overlay { GlowSurfaceLight(shape: iconShape(size), size: size, hue: hue, glow: 0) }
+            .overlay { GlowEdges(shape: iconShape(size), size: size, hue: hue) }
+            .background { GlowUnderLight(size: size, hue: hue) }
+        } else {
+            // ベース色を指定したアイテムはその色相、それ以外は設定のグローの色（nil）
+            let hue = item.baseHSB.map { $0.h / 360 }
+            GlowTileBackground(size: size, hue: hue, isOn: isOn)
+                .overlay { GlowSymbol(name: item.symbol, size: size, hue: hue, isOn: isOn) }
+                .background { GlowUnderLight(size: size, hue: hue) }
         }
-        .background { GlowUnderLight(size: size, hue: hue) }
     }
 }
 
@@ -202,8 +351,7 @@ struct GlowCircle: View {
                                                   Color(hue: glowHue, saturation: 0.85, brightness: 0.36)],
                                          startPoint: .top, endPoint: .bottom))
             if let tint { Circle().fill(tint.opacity(0.55)) }
-            Circle().fill(RadialGradient(colors: [Color(hue: glowHue, saturation: 0.3, brightness: 1).opacity(0.35), .clear],
-                                         center: .bottom, startRadius: 0, endRadius: 30))
+            GlowSurfaceLight(shape: Circle(), size: 40, glow: 0.35)
             GlowEdges(shape: Circle(), size: 44)
         }
     }
@@ -269,6 +417,22 @@ struct GlowColorPicker: View {
                 Circle()
                     .fill(Color(hue: themeHue / 360, saturation: 0.85, brightness: 0.9))
                     .frame(width: 20, height: 20)
+            }
+        }
+    }
+}
+
+/// 設定画面: 傾きで光を動かすかどうか
+struct GlowMotionSettings: View {
+    @AppStorage("glowMotion") private var glowMotion = true
+    @AppStorage("glowMotionStrength") private var strength = 1.0
+
+    var body: some View {
+        Toggle("傾きで光を動かす", isOn: $glowMotion)
+        if glowMotion {
+            VStack(alignment: .leading) {
+                Text("動きの強さ: \(Int((strength * 100).rounded()))%")
+                Slider(value: $strength, in: 0.3...2, step: 0.1)
             }
         }
     }

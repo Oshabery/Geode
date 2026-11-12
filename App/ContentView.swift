@@ -28,6 +28,8 @@ struct ContentView: View {
     @AppStorage("useCustomTint") private var useCustomTint = false
     @AppStorage("tintColor") private var tintColor = Theme.defaultTint
     @AppStorage("uiStyle") private var uiStyle = UIStyle.standard.rawValue
+    @AppStorage("glowMotion") private var glowMotion = true
+    @AppStorage("glowMotionStrength") private var glowMotionStrength = 1.0
     @State private var editing = false
     @State private var showSettings = false
     @Environment(\.scenePhase) private var scenePhase
@@ -36,6 +38,16 @@ struct ContentView: View {
     /// グローは暗い画面専用。保存している外観モードは書き換えず、表示のときだけダークにする
     private var scheme: ColorScheme? { isGlow ? .dark : Appearance(rawValue: appearance)?.colorScheme }
     private var tint: Color? { useCustomTint ? tintColor.color : nil }
+
+    /// 傾きの読み取りは、グローを選んでいて、設定がオンで、アプリが前面のときだけ動かす
+    private func updateGlowMotion() {
+        GlowMotion.shared.strength = glowMotionStrength
+        if isGlow && glowMotion && scenePhase == .active {
+            GlowMotion.shared.start()
+        } else {
+            GlowMotion.shared.stop()
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -74,7 +86,12 @@ struct ContentView: View {
         .preferredColorScheme(scheme)
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.refreshDirectStates() }
+            updateGlowMotion()
         }
+        .onChange(of: uiStyle) { _, _ in updateGlowMotion() }
+        .onChange(of: glowMotion) { _, _ in updateGlowMotion() }
+        .onChange(of: glowMotionStrength) { _, _ in updateGlowMotion() }
+        .onAppear { updateGlowMotion() }
         .sheet(isPresented: $showSettings) {
             SettingsView()
                 .environmentObject(store)
@@ -143,6 +160,7 @@ struct SettingsView: View {
                         .disabled(uiStyle == UIStyle.glow.rawValue)
                     if uiStyle == UIStyle.glow.rawValue {
                         GlowColorPicker()
+                        GlowMotionSettings()
                     }
                 } header: {
                     Text("外観")
