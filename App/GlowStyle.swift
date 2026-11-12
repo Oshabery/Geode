@@ -232,19 +232,47 @@ struct GlowBackground: View {
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
     @AppStorage(GlowPalette.intensityKey) private var intensity = GlowPalette.defaultIntensity
     @ObservedObject private var motion = GlowMotion.shared
+    @Environment(\.colorScheme) private var scheme
 
     /// 真っ黒（RGB 0）ではなく、ほんの少しだけグレーに寄せた地の色
     private static let base = Color(white: 0.04)
+    /// ライトの地の色
+    private static let lightBase = Color(white: 0.95)
 
     var body: some View {
         let light = GlowLight(motion.tilt)
         let f = GlowPalette.factor(intensity)
+        if scheme == .light {
+            lightBody(light, f)
+        } else {
+            darkBody(light, f)
+        }
+    }
+
+    /// ライト: 明るい地に、下から淡い色の光
+    private func lightBody(_ light: GlowLight, _ f: Double) -> some View {
+        let color = Color(hue: themeHue / 360, saturation: 0.55, brightness: 1)
+        let shiftX = light.dx * 0.5
+        let shiftY = light.ty * 0.12
+        return ZStack {
+            Self.lightBase
+            if f > 1 {
+                color.opacity(0.06 * (f - 1))
+            }
+            RadialGradient(colors: [color.opacity(min(0.45 * pow(f, 0.8), 0.85)), .clear],
+                           center: UnitPoint(x: 0.5 + shiftX, y: 1.08 + shiftY),
+                           startRadius: 0, endRadius: 620 * (0.55 + 0.45 * f))
+        }
+        .ignoresSafeArea()
+    }
+
+    private func darkBody(_ light: GlowLight, _ f: Double) -> some View {
         let color = Color(hue: themeHue / 360, saturation: 0.85, brightness: 0.9)
         // 傾きに合わせて光の中心を左右に寄せる（上下は少しだけ）
         let shiftX = light.dx * 0.5
         // 前後に傾けたときも光が上下に動くように（斜めに傾けると斜めに動く）
         let shiftY = light.ty * 0.12
-        ZStack {
+        return ZStack {
             Self.base
             // 強いときは色の光が画面全体にうっすら回る
             if f > 1 {
@@ -276,6 +304,7 @@ struct GlowEdges<S: InsettableShape>: View {
     var additive = true
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
     @ObservedObject private var motion = GlowMotion.shared
+    @Environment(\.colorScheme) private var scheme
 
     /// 下の色を中心にした、隣り合う色のスペクトル
     private func prism(_ light: GlowLight) -> AngularGradient {
@@ -298,15 +327,31 @@ struct GlowEdges<S: InsettableShape>: View {
 
     var body: some View {
         let light = GlowLight(motion.tilt)
-        ZStack {
-            shape.strokeBorder(prism(light), lineWidth: max(1.5, size * 0.035))
-                .opacity(dim ? 0.25 : 0.75)
-                .blendMode(additive ? .plusLighter : .normal)
-            shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.12), .white.opacity(dim ? 0.35 : 0.8)],
-                                              startPoint: light.far, endPoint: light.lit),
-                               lineWidth: max(1, size * 0.012))
+        if scheme == .light {
+            // ライト: 明るい地では加算も白い縁も見えないので、通常の重ね方と少し濃い縁にする
+            ZStack {
+                shape.strokeBorder(prism(light), lineWidth: max(1.5, size * 0.035))
+                    .opacity(dim ? 0.2 : 0.55)
+                shape.strokeBorder(LinearGradient(colors: [Color.black.opacity(0.06), Color.black.opacity(dim ? 0.1 : 0.18)],
+                                                  startPoint: light.far, endPoint: light.lit),
+                                   lineWidth: max(1, size * 0.012))
+                shape.inset(by: max(1, size * 0.012))
+                    .strokeBorder(LinearGradient(colors: [.white.opacity(0.9), .white.opacity(0.2)],
+                                                 startPoint: light.far, endPoint: light.lit),
+                                  lineWidth: max(0.75, size * 0.01))
+            }
+            .allowsHitTesting(false)
+        } else {
+            ZStack {
+                shape.strokeBorder(prism(light), lineWidth: max(1.5, size * 0.035))
+                    .opacity(dim ? 0.25 : 0.75)
+                    .blendMode(additive ? .plusLighter : .normal)
+                shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.12), .white.opacity(dim ? 0.35 : 0.8)],
+                                                  startPoint: light.far, endPoint: light.lit),
+                                   lineWidth: max(1, size * 0.012))
+            }
+            .allowsHitTesting(false)
         }
-        .allowsHitTesting(false)
     }
 }
 
@@ -319,10 +364,29 @@ struct GlowSurfaceLight<S: Shape>: View {
     var glow: Double = 0.42
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
     @ObservedObject private var motion = GlowMotion.shared
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let light = GlowLight(motion.tilt)
         let base = hue ?? themeHue / 360
+        if scheme == .light {
+            // ライト: 光の側に淡い色、反対側に白い映り込み、傾けたときだけ薄い影
+            ZStack {
+                shape.fill(RadialGradient(
+                    colors: [Color(hue: base, saturation: 0.45, brightness: 1).opacity(glow * 0.8), .clear],
+                    center: light.lit, startRadius: 0, endRadius: size * 0.75))
+                shape.fill(LinearGradient(colors: [.white.opacity(0.55), .clear],
+                                          startPoint: light.far, endPoint: .center))
+                shape.fill(LinearGradient(colors: [.black.opacity(0.12 * light.amount), .clear],
+                                          startPoint: light.far, endPoint: .center))
+            }
+            .allowsHitTesting(false)
+        } else {
+            darkLayers(light, base)
+        }
+    }
+
+    private func darkLayers(_ light: GlowLight, _ base: Double) -> some View {
         ZStack {
             shape.fill(RadialGradient(
                 colors: [Color(hue: base, saturation: 0.3, brightness: 1).opacity(glow), .clear],
@@ -344,14 +408,22 @@ struct GlowTileBackground: View {
     var isOn = false
     var dim = false
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let hue = self.hue ?? themeHue / 360
         let shape = iconShape(size)
-        let colors: [Color] = isOn
-            ? [Color(hue: hue, saturation: 0.25, brightness: 0.92), Color(hue: hue, saturation: 0.45, brightness: 1)]
-            : [Color(hue: hue, saturation: 0.9, brightness: 0.07),
-               Color(hue: hue, saturation: 0.85, brightness: dim ? 0.2 : 0.42)]
+        let isLight = scheme == .light
+        // ライトは白っぽいすりガラスで、オンのときは濃い色に反転する。ダークはこれまでどおり
+        let colors: [Color] = isLight
+            ? (isOn
+               ? [Color(hue: hue, saturation: 0.85, brightness: 0.45), Color(hue: hue, saturation: 0.8, brightness: 0.72)]
+               : [Color(hue: hue, saturation: dim ? 0.03 : 0.06, brightness: 0.99),
+                  Color(hue: hue, saturation: dim ? 0.1 : 0.28, brightness: dim ? 0.9 : 0.95)])
+            : (isOn
+               ? [Color(hue: hue, saturation: 0.25, brightness: 0.92), Color(hue: hue, saturation: 0.45, brightness: 1)]
+               : [Color(hue: hue, saturation: 0.9, brightness: 0.07),
+                  Color(hue: hue, saturation: 0.85, brightness: dim ? 0.2 : 0.42)])
         ZStack {
             shape.fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
             GlowSurfaceLight(shape: shape, size: size, hue: hue, glow: isOn ? 0.6 : (dim ? 0.12 : 0.42))
@@ -369,6 +441,7 @@ struct GlowUnderLight: View {
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
     @AppStorage(GlowPalette.intensityKey) private var intensity = GlowPalette.defaultIntensity
     @ObservedObject private var motion = GlowMotion.shared
+    @Environment(\.colorScheme) private var scheme
 
     /// 傾きで動く幅（タイルの大きさに対する割合）。大きく動きすぎないよう小さくしている
     private static let travel: CGFloat = 0.12
@@ -377,8 +450,9 @@ struct GlowUnderLight: View {
         let hue = self.hue ?? themeHue / 360
         let light = GlowLight(motion.tilt)
         let f = GlowPalette.factor(intensity)
-        let color = Color(hue: hue, saturation: 0.7, brightness: 1)
-        let peak = min(0.4 * (0.4 + 0.6 * f), 0.75)
+        let isLight = scheme == .light
+        let color = Color(hue: hue, saturation: isLight ? 0.6 : 0.7, brightness: 1)
+        let peak = min(0.4 * (0.4 + 0.6 * f), 0.75) * (isLight ? 0.8 : 1)
         // 円の端でちょうど透明になる、なだらかな減り方のグラデーションを描き、縦につぶして楕円にする。
         // 端に境界線が出ない（ぼかしフィルターを使わずに、ぼかしたような見た目にする）
         Circle()
@@ -439,11 +513,21 @@ struct GlowSymbol: View {
     var hue: Double? = nil
     var isOn = false
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let hue = self.hue ?? themeHue / 360
         let image = Image(systemName: name).font(.system(size: size * 0.42, weight: .regular))
-        if isOn {
+        if scheme == .light {
+            // ライト: 普段は濃い色の記号、オンでは濃いタイルに白い記号
+            if isOn {
+                image.foregroundStyle(Color.white)
+            } else {
+                image.foregroundStyle(LinearGradient(colors: [Color(hue: hue, saturation: 0.55, brightness: 0.4),
+                                                              Color(hue: hue, saturation: 0.6, brightness: 0.22)],
+                                                     startPoint: .top, endPoint: .bottom))
+            }
+        } else if isOn {
             image.foregroundStyle(Color(hue: hue, saturation: 0.9, brightness: 0.22))
         } else {
             image.foregroundStyle(LinearGradient(colors: [.white, Color(white: 0.68)],
@@ -458,13 +542,15 @@ struct GlowSymbol: View {
 struct GlowCircle: View {
     var tint: Color? = nil
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let glowHue = themeHue / 360
+        let colors: [Color] = scheme == .light
+            ? [Color(hue: glowHue, saturation: 0.05, brightness: 0.99), Color(hue: glowHue, saturation: 0.25, brightness: 0.94)]
+            : [Color(hue: glowHue, saturation: 0.9, brightness: 0.08), Color(hue: glowHue, saturation: 0.85, brightness: 0.36)]
         ZStack {
-            Circle().fill(LinearGradient(colors: [Color(hue: glowHue, saturation: 0.9, brightness: 0.08),
-                                                  Color(hue: glowHue, saturation: 0.85, brightness: 0.36)],
-                                         startPoint: .top, endPoint: .bottom))
+            Circle().fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
             if let tint { Circle().fill(tint.opacity(0.55)) }
             GlowSurfaceLight(shape: Circle(), size: 40, glow: 0.35)
             GlowEdges(shape: Circle(), size: 44)
@@ -538,6 +624,19 @@ struct GlowColorPicker: View {
 }
 
 /// 設定画面: 傾きで光を動かすかどうか
+/// 設定画面: グローのダーク / ライト
+struct GlowBrightnessPicker: View {
+    @AppStorage("glowLight") private var glowLight = false
+
+    var body: some View {
+        Picker("グローの明るさ", selection: $glowLight) {
+            Text("ダーク").tag(false)
+            Text("ライト").tag(true)
+        }
+        .pickerStyle(.segmented)
+    }
+}
+
 struct GlowMotionSettings: View {
     @AppStorage("glowMotion") private var glowMotion = true
     @AppStorage("glowMotionStrength") private var strength = 1.0

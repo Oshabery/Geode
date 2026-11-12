@@ -150,6 +150,7 @@ struct TileView: View {
     @AppStorage("glassIcons") private var glassIcons = false
     @AppStorage("labelWeight") private var labelWeight = Theme.defaultWeight
     @AppStorage("uiStyle") private var uiStyle = UIStyle.standard.rawValue
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         if let item {
@@ -166,7 +167,7 @@ struct TileView: View {
                 .scaleEffect(highlighted ? 1.06 : 1)
                 if metrics.labelHeight > 0 {
                     if isGlow {
-                        label(item).foregroundStyle(Color.white.opacity(0.85))
+                        label(item).foregroundStyle(scheme == .light ? Color.black.opacity(0.72) : Color.white.opacity(0.85))
                     } else {
                         label(item)
                     }
@@ -239,6 +240,10 @@ struct LauncherGridView: View {
     @State private var touching = false
     /// グループの中身が広がり出す中心（グリッド内の割合）。押した指の位置
     @State private var groupOrigin: UnitPoint = .center
+    @AppStorage("uiStyle") private var uiStyleRaw = UIStyle.standard.rawValue
+    @Environment(\.colorScheme) private var currentScheme
+    /// グループ階層の中身の配色。背景が暗いので、グローではダークに固定する（標準はこれまでどおり）
+    private var groupScheme: ColorScheme { uiStyleRaw == UIStyle.glow.rawValue ? .dark : currentScheme }
 
     /// グループ階層に入るときの動き。出だしは速く（押した瞬間にほぼ見える）、
     /// 終わりにかけて長くゆっくり落ち着く（余韻）
@@ -280,6 +285,8 @@ struct LauncherGridView: View {
                         }
                     }
                     .foregroundStyle(.white)
+                    // グループの背景は暗いので、グローのライトでも中身はダークの見た目で描く
+                    .environment(\.colorScheme, groupScheme)
                     .transition(.asymmetric(insertion: .scale(scale: 0.97, anchor: groupOrigin).combined(with: .opacity),
                                             removal: .opacity))
                     .zIndex(2)
@@ -292,6 +299,7 @@ struct LauncherGridView: View {
                         }
                     }
                     .foregroundStyle(.white)
+                    .environment(\.colorScheme, groupScheme)
                     .transition(.opacity)
                     .zIndex(3)
                 }

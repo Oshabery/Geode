@@ -28,6 +28,7 @@ struct ContentView: View {
     @AppStorage("useCustomTint") private var useCustomTint = false
     @AppStorage("tintColor") private var tintColor = Theme.defaultTint
     @AppStorage("uiStyle") private var uiStyle = UIStyle.standard.rawValue
+    @AppStorage("glowLight") private var glowLight = false
     @AppStorage("glowMotion") private var glowMotion = true
     @AppStorage("glowMotionStrength") private var glowMotionStrength = 1.0
     @State private var editing = false
@@ -35,8 +36,10 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     private var isGlow: Bool { uiStyle == UIStyle.glow.rawValue }
-    /// グローは暗い画面専用。保存している外観モードは書き換えず、表示のときだけダークにする
-    private var scheme: ColorScheme? { isGlow ? .dark : Appearance(rawValue: appearance)?.colorScheme }
+    /// グローは「グローの明るさ」でダーク / ライトを決める。標準の外観モードの設定は書き換えない
+    private var scheme: ColorScheme? {
+        isGlow ? (glowLight ? .light : .dark) : Appearance(rawValue: appearance)?.colorScheme
+    }
     private var tint: Color? { useCustomTint ? tintColor.color : nil }
 
     /// 傾きの読み取りは、グローを選んでいて、設定がオンで、アプリが前面のときだけ動かす
@@ -153,7 +156,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 SettingsGroup("外観", id: "appearance",
-                              footer: isGlow ? "グローは暗い地に色の光のデザインです。モード・ガラス風アイコン・背景色は使われません（設定は残っていて、「標準」に戻すと元どおりになります）。" : nil) {
+                              footer: isGlow ? "グローは地に色の光が差すデザインです。明るさは「グローの明るさ」で選びます。上のモード・ガラス風アイコン・背景色は使われません（設定は残っていて、「標準」に戻すと元どおりになります）。" : nil) {
                     Picker("デザイン", selection: $uiStyle) {
                         ForEach(UIStyle.allCases) { Text($0.title).tag($0.rawValue) }
                     }
@@ -166,6 +169,7 @@ struct SettingsView: View {
                     Toggle("アイコンをガラス風にする", isOn: $glassIcons)
                         .disabled(isGlow)
                     if isGlow {
+                        GlowBrightnessPicker()
                         GlowColorPicker()
                         GlowMotionSettings()
                     }
