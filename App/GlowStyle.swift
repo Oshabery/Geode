@@ -19,6 +19,12 @@ enum GlowPalette {
     static let key = "glowHue"
     static let defaultHue: Double = 222
 
+    /// ライトの強さ（1...10 の 10 段階、@AppStorage）。5 が基準
+    static let intensityKey = "glowIntensity"
+    static let defaultIntensity: Double = 5
+    /// 段階を倍率に直す（5 → 1.0、1 → 0.2、10 → 2.0）
+    static func factor(_ level: Double) -> Double { min(max(level, 1), 10) / defaultIntensity }
+
     struct Preset: Identifiable {
         let name: String
         let hue: Double
@@ -153,19 +159,35 @@ func glowImageHue(_ file: String) -> Double? {
 
 // MARK: 背景
 
-/// 黒地に、下から光が差し込む背景。傾けると光の位置が少し動く
+/// ごく暗いグレーの地に、下から色の付いた光が差し込む背景。
+/// 傾けると光が左右に寄る。ライトの強さを上げるほど、色の光が濃く・広くなる
 struct GlowBackground: View {
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
+    @AppStorage(GlowPalette.intensityKey) private var intensity = GlowPalette.defaultIntensity
     @ObservedObject private var motion = GlowMotion.shared
+
+    /// 真っ黒（RGB 0）ではなく、ほんの少しだけグレーに寄せた地の色
+    private static let base = Color(white: 0.04)
 
     var body: some View {
         let light = GlowLight(motion.tilt)
+        let f = GlowPalette.factor(intensity)
+        let color = Color(hue: themeHue / 360, saturation: 0.85, brightness: 0.9)
+        // 傾きに合わせて光の中心を左右に寄せる（上下は少しだけ）
+        let shiftX = light.dx * 0.5
+        let shiftY = (light.dy - 1) * 0.25
         ZStack {
-            Color.black
-            RadialGradient(colors: [Color(hue: themeHue / 360, saturation: 0.85, brightness: 0.9).opacity(0.55), .clear],
-                           center: UnitPoint(x: 0.5 + light.dx * 0.25, y: 1.08), startRadius: 0, endRadius: 620)
-            RadialGradient(colors: [Color.white.opacity(0.22), .clear],
-                           center: UnitPoint(x: 0.5 + light.dx * 0.3, y: 1.02), startRadius: 0, endRadius: 260)
+            Self.base
+            // 強いときは色の光が画面全体にうっすら回る
+            if f > 1 {
+                color.opacity(0.09 * (f - 1))
+            }
+            RadialGradient(colors: [color.opacity(min(0.55 * pow(f, 0.8), 0.92)), .clear],
+                           center: UnitPoint(x: 0.5 + shiftX, y: 1.08 + shiftY),
+                           startRadius: 0, endRadius: 620 * (0.55 + 0.45 * f))
+            RadialGradient(colors: [Color.white.opacity(min(0.22 * pow(f, 0.7), 0.5)), .clear],
+                           center: UnitPoint(x: 0.5 + shiftX * 1.15, y: 1.02 + shiftY),
+                           startRadius: 0, endRadius: 260 * (0.7 + 0.3 * f))
         }
         .ignoresSafeArea()
     }
@@ -276,16 +298,24 @@ struct GlowUnderLight: View {
     let size: CGFloat
     var hue: Double? = nil
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
+    @AppStorage(GlowPalette.intensityKey) private var intensity = GlowPalette.defaultIntensity
     @ObservedObject private var motion = GlowMotion.shared
+
+    /// 傾きで動く幅（タイルの大きさに対する割合）。大きく動きすぎないよう小さくしている
+    private static let travel: CGFloat = 0.12
 
     var body: some View {
         let hue = self.hue ?? themeHue / 360
         let light = GlowLight(motion.tilt)
+        let f = GlowPalette.factor(intensity)
         Ellipse()
-            .fill(RadialGradient(colors: [Color(hue: hue, saturation: 0.7, brightness: 1).opacity(0.4), .clear],
-                                 center: .center, startRadius: 0, endRadius: size * 0.7))
+            .fill(RadialGradient(
+                colors: [Color(hue: hue, saturation: 0.7, brightness: 1).opacity(min(0.4 * (0.4 + 0.6 * f), 0.75)), .clear],
+                center: .center, startRadius: 0, endRadius: size * 0.7))
             .frame(width: size * 1.4, height: size * 0.6)
-            .offset(x: light.dx * size * 0.45, y: light.dy * size * 0.45)
+            // 傾き 0 ではタイルの真下。そこから少しだけ光の側へ寄る
+            .offset(x: light.dx * size * Self.travel,
+                    y: size * 0.45 + (light.dy - 1) * size * Self.travel)
             .allowsHitTesting(false)
     }
 }
@@ -433,8 +463,13 @@ struct GlowColorPicker: View {
 struct GlowMotionSettings: View {
     @AppStorage("glowMotion") private var glowMotion = true
     @AppStorage("glowMotionStrength") private var strength = 1.0
+    @AppStorage(GlowPalette.intensityKey) private var intensity = GlowPalette.defaultIntensity
 
     var body: some View {
+        VStack(alignment: .leading) {
+            Text("ライトの強さ: \(Int(intensity)) / 10")
+            Slider(value: $intensity, in: 1...10, step: 1)
+        }
         Toggle("傾きで光を動かす", isOn: $glowMotion)
         if glowMotion {
             VStack(alignment: .leading) {
