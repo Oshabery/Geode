@@ -24,6 +24,7 @@ struct EditGridView: View {
     @AppStorage("labelSpacing") private var labelSpacing = GridDefaults.labelSpacing
     @AppStorage("uiStyle") private var uiStyle = UIStyle.standard.rawValue
     @AppStorage("outerMargin") private var outerMargin = GridDefaults.outerMargin
+    @AppStorage("gridOffsetY") private var gridOffsetY = 0.0
     @State private var createSlot: Int?
     @State private var target: EditorTarget?
     @State private var dragFrom: Int?
@@ -36,7 +37,7 @@ struct EditGridView: View {
         GeometryReader { geo in
             let metrics = GridMetrics(size: geo.size, layout: layout, showLabels: showLabels,
                                       gapX: gridGapX, gapY: gridGapY, iconScale: iconScale,
-                                      labelSpacing: labelSpacing, outerMargin: outerMargin)
+                                      labelSpacing: labelSpacing, outerMargin: outerMargin, offsetY: gridOffsetY)
             ZStack {
                 Color.clear
                 if showGridLines { GridLines(metrics: metrics) }

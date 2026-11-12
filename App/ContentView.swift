@@ -129,6 +129,7 @@ struct SettingsView: View {
     @AppStorage("useCustomGridColor") private var useCustomGridColor = false
     @AppStorage("gridColor") private var gridColor = Theme.defaultGrid
     @AppStorage("gridLineOpacity") private var gridLineOpacity = 1.0
+    @AppStorage("gridOffsetY") private var gridOffsetY = 0.0
     @State private var working = false
     @State private var message: String?
 
@@ -146,10 +147,13 @@ struct SettingsView: View {
         )
     }
 
+    private var isGlow: Bool { uiStyle == UIStyle.glow.rawValue }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section {
+                SettingsGroup("外観", id: "appearance",
+                              footer: isGlow ? "グローは暗い地に色の光のデザインです。モード・ガラス風アイコン・背景色は使われません（設定は残っていて、「標準」に戻すと元どおりになります）。" : nil) {
                     Picker("デザイン", selection: $uiStyle) {
                         ForEach(UIStyle.allCases) { Text($0.title).tag($0.rawValue) }
                     }
@@ -158,41 +162,30 @@ struct SettingsView: View {
                         ForEach(Appearance.allCases) { Text($0.title).tag($0.rawValue) }
                     }
                     .pickerStyle(.segmented)
-                    .disabled(uiStyle == UIStyle.glow.rawValue)
+                    .disabled(isGlow)
                     Toggle("アイコンをガラス風にする", isOn: $glassIcons)
-                        .disabled(uiStyle == UIStyle.glow.rawValue)
-                    if uiStyle == UIStyle.glow.rawValue {
+                        .disabled(isGlow)
+                    if isGlow {
                         GlowColorPicker()
                         GlowMotionSettings()
                     }
-                } header: {
-                    Text("外観")
-                } footer: {
-                    if uiStyle == UIStyle.glow.rawValue {
-                        Text("グローは黒地に青い光のデザインです。暗い画面専用のため、モード・ガラス風アイコン・背景色は使われません（設定は残っていて、「標準」に戻すと元どおりになります）。")
-                    }
                 }
 
-                Section {
+                SettingsGroup("背景色（HSB）", id: "background",
+                              footer: "オフのときは外観モードに合わせた白 / 黒になります。") {
                     Toggle("背景色を指定", isOn: $useCustomBackground)
                     if useCustomBackground { HSBEditor(color: $backgroundColor) }
-                } header: {
-                    Text("背景色（HSB）")
-                } footer: {
-                    Text("オフのときは外観モードに合わせた白 / 黒になります。")
                 }
-                .disabled(uiStyle == UIStyle.glow.rawValue)
+                .disabled(isGlow)
 
-                Section {
+                SettingsGroup("UI の色（HSB）", id: "tint",
+                              footer: "アプリ名、ボタン、シンボルのアイコンに使う色です。コードは「色相 0–360, 彩度 0–100, 明度 0–100」の順で入力します。") {
                     Toggle("UI の色を指定", isOn: $useCustomTint)
                     if useCustomTint { HSBEditor(color: $tintColor) }
-                } header: {
-                    Text("UI の色（HSB）")
-                } footer: {
-                    Text("アプリ名、ボタン、シンボルのアイコンに使う色です。コードは「色相 0–360, 彩度 0–100, 明度 0–100」の順で入力します。")
                 }
 
-                Section {
+                SettingsGroup("グリッド線", id: "gridLines",
+                              footer: "色の指定がオフのときは、UI の色を薄くした線になります。") {
                     Toggle("グリッド線を表示", isOn: $showGridLines)
                     if showGridLines {
                         VStack(alignment: .leading) {
@@ -202,13 +195,10 @@ struct SettingsView: View {
                         Toggle("グリッド線の色を指定", isOn: $useCustomGridColor)
                         if useCustomGridColor { HSBEditor(color: $gridColor) }
                     }
-                } header: {
-                    Text("グリッド線の色（HSB）")
-                } footer: {
-                    Text("色の指定がオフのときは、UI の色を薄くした線になります。")
                 }
 
-                Section {
+                SettingsGroup("サイズと余白", id: "size",
+                              footer: "アイコンは画面中央を基準に並びます。間隔は隣のアイコンとの距離で、広げるほど中央から外側へ広がります。外側の余白は、端から一番外のアイコンまで最低限あける距離です。上下の位置は、上下に空いている分だけ動かせます。動かないときは、アイコンサイズ・縦の間隔・行の数を減らすか、アプリ名を消すと空きができます。") {
                     VStack(alignment: .leading) {
                         Text("アイコンサイズ: \(Int((iconScale * 100).rounded()))%")
                         Slider(value: $iconScale, in: 0.4...1, step: 0.05)
@@ -225,46 +215,24 @@ struct SettingsView: View {
                         Text("外側の余白: \(Int(outerMargin)) pt")
                         Slider(value: $outerMargin, in: 0...60, step: 1)
                     }
+                    VStack(alignment: .leading) {
+                        Text("上下の位置: \(gridOffsetY > 0 ? "下へ" : gridOffsetY < 0 ? "上へ" : "中央")\(gridOffsetY == 0 ? "" : " \(Int(abs(gridOffsetY))) pt")")
+                        Slider(value: $gridOffsetY, in: -200...200, step: 2)
+                    }
                     Button("サイズと余白を初期値に戻す") {
                         iconScale = GridDefaults.iconScale
                         gridGapX = GridDefaults.gapX
                         gridGapY = GridDefaults.gapY
                         outerMargin = GridDefaults.outerMargin
+                        gridOffsetY = 0
                     }
                     .disabled(iconScale == GridDefaults.iconScale && gridGapX == GridDefaults.gapX
-                              && gridGapY == GridDefaults.gapY && outerMargin == GridDefaults.outerMargin)
-                } header: {
-                    Text("サイズと余白")
-                } footer: {
-                    Text("アイコンは画面中央を基準に並びます。間隔は隣のアイコンとの距離で、広げるほど中央から外側へ広がります。外側の余白は、端から一番外のアイコンまで最低限あける距離です。アイコンは正方形なので、縦横のうち余裕のある方向では端までの距離が設定より広くなります。その方向の間隔を広げると端に近づきます。")
+                              && gridGapY == GridDefaults.gapY && outerMargin == GridDefaults.outerMargin
+                              && gridOffsetY == 0)
                 }
 
-                Section {
-                    VStack(alignment: .leading) {
-                        Text("ボタンの間隔: \(Int(dockSpacing)) pt")
-                        Slider(value: $dockSpacing, in: 0...150, step: 1)
-                    }
-                } header: {
-                    Text("下部の 3 つのボタン")
-                } footer: {
-                    Text("中央のボタンを基準に、左右のボタンをどれだけ離すかを決めます。画面の幅を超える値にしても、端で止まります。")
-                }
-
-                if !store.estimatedSwitches.isEmpty {
-                    Section {
-                        ForEach(store.estimatedSwitches) { item in
-                            Toggle(item.name, isOn: Binding(
-                                get: { store.switchState(for: item) ?? false },
-                                set: { store.setSwitchState(item, $0) }))
-                        }
-                    } header: {
-                        Text("オン / オフの表示")
-                    } footer: {
-                        Text("ショートカット経由のオン / オフは、Geode が状態を推定してアイコンを反転しています。コントロールセンターなど Geode の外で切り替えて表示がずれたときは、ここで直せます（操作は実行されません）。")
-                    }
-                }
-
-                Section {
+                SettingsGroup("グリッド", id: "grid",
+                              footer: "アイコンはマスに収まる最大サイズで表示されます。アプリ名を消す、または行・列を減らすと大きくなります。グループ内も同じ行・列です。") {
                     Toggle("アプリ名を表示", isOn: $showLabels)
                     Picker("アプリ名の太さ", selection: $labelWeight) {
                         ForEach(Theme.weights.indices, id: \.self) { Text(Theme.weights[$0].name).tag($0) }
@@ -277,13 +245,28 @@ struct SettingsView: View {
                     .disabled(!showLabels)
                     Stepper("列: \(store.board.layout.columns)", value: layoutBinding(\.columns), in: 2...5)
                     Stepper("行: \(store.board.layout.rows)", value: layoutBinding(\.rows), in: 3...8)
-                } header: {
-                    Text("グリッド")
-                } footer: {
-                    Text("アイコンはマスに収まる最大サイズで表示されます。アプリ名を消す、または行・列を減らすと大きくなります。グループ内も同じ行・列です。")
                 }
 
-                Section {
+                SettingsGroup("下部の 3 つのボタン", id: "dock",
+                              footer: "中央のボタンを基準に、左右のボタンをどれだけ離すかを決めます。画面の幅を超える値にしても、端で止まります。") {
+                    VStack(alignment: .leading) {
+                        Text("ボタンの間隔: \(Int(dockSpacing)) pt")
+                        Slider(value: $dockSpacing, in: 0...150, step: 1)
+                    }
+                }
+
+                if !store.estimatedSwitches.isEmpty {
+                    SettingsGroup("オン / オフの表示", id: "switches",
+                                  footer: "ショートカット経由のオン / オフは、Geode が状態を推定してアイコンを反転しています。コントロールセンターなど Geode の外で切り替えて表示がずれたときは、ここで直せます（操作は実行されません）。") {
+                        ForEach(store.estimatedSwitches) { item in
+                            Toggle(item.name, isOn: Binding(
+                                get: { store.switchState(for: item) ?? false },
+                                set: { store.setSwitchState(item, $0) }))
+                        }
+                    }
+                }
+
+                SettingsGroup("アプリ", id: "apps") {
                     Button {
                         Task {
                             working = true
@@ -300,8 +283,6 @@ struct SettingsView: View {
                         }
                     }
                     .disabled(working)
-                } header: {
-                    Text("アプリ")
                 }
             }
             .navigationTitle("設定")
@@ -313,6 +294,35 @@ struct SettingsView: View {
             .alert("Geode", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
                 Button("OK") {}
             } message: { Text(message ?? "") }
+        }
+    }
+}
+
+/// 設定画面の折りたためるまとまり。開閉の状態は項目ごとに覚えておく（最初は閉じている）
+struct SettingsGroup<Content: View>: View {
+    let title: String
+    let footer: String?
+    let content: Content
+    @AppStorage private var expanded: Bool
+
+    init(_ title: String, id: String, footer: String? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.footer = footer
+        self.content = content()
+        _expanded = AppStorage(wrappedValue: false, "settingsOpen." + id)
+    }
+
+    var body: some View {
+        Section {
+            DisclosureGroup(isExpanded: $expanded) {
+                content
+            } label: {
+                Text(title).font(.headline)
+            }
+        } footer: {
+            if expanded, let footer {
+                Text(footer)
+            }
         }
     }
 }

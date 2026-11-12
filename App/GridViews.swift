@@ -20,8 +20,9 @@ struct GridMetrics {
     /// - iconScale: 収まる最大サイズに対する倍率 (0.4...1)。小さくしても間隔は変えず、格子全体が中央に縮む
     /// - labelSpacing: アイコンとアプリ名の間隔 (pt)
     /// - outerMargin: 表示領域の端から最低限あける距離 (pt)
+    /// - offsetY: 格子全体を上下にずらす量 (pt、+ で下)。空いている高さの分までしか動かない
     init(size: CGSize, layout: GridLayout, showLabels: Bool, gapX: Double, gapY: Double,
-         iconScale: Double, labelSpacing: Double, outerMargin: Double) {
+         iconScale: Double, labelSpacing: Double, outerMargin: Double, offsetY: Double = 0) {
         let cols = CGFloat(layout.columns), rows = CGFloat(layout.rows)
         self.layout = layout
         let label = showLabels ? GridDefaults.labelTextHeight + CGFloat(max(labelSpacing, 0)) : 0
@@ -43,7 +44,10 @@ struct GridMetrics {
         self.gapY = gy
         // 格子を中央に置く
         marginX = (size.width - cols * side - (cols - 1) * gx) / 2
-        marginY = (size.height - rows * (side + label) - (rows - 1) * gy) / 2
+        let centeredY = (size.height - rows * (side + label) - (rows - 1) * gy) / 2
+        // 上下にずらす。格子が表示領域からはみ出さない（タッチが届かなくならない）範囲まで
+        let room = max(centeredY - gy / 2, 0)
+        marginY = centeredY + min(max(CGFloat(offsetY), -room), room)
     }
 
     var cellSize: CGSize { CGSize(width: tile, height: tile + labelHeight) }
@@ -226,6 +230,7 @@ struct LauncherGridView: View {
     @AppStorage("showGridLines") private var showGridLines = true
     @AppStorage("labelSpacing") private var labelSpacing = GridDefaults.labelSpacing
     @AppStorage("outerMargin") private var outerMargin = GridDefaults.outerMargin
+    @AppStorage("gridOffsetY") private var gridOffsetY = 0.0
     @State private var openGroup: LaunchItem?
     @State private var groupSlot: Int?
     @State private var highlighted: Int?
@@ -246,7 +251,7 @@ struct LauncherGridView: View {
         GeometryReader { geo in
             let metrics = GridMetrics(size: geo.size, layout: store.board.layout, showLabels: showLabels,
                                       gapX: gridGapX, gapY: gridGapY, iconScale: iconScale,
-                                      labelSpacing: labelSpacing, outerMargin: outerMargin)
+                                      labelSpacing: labelSpacing, outerMargin: outerMargin, offsetY: gridOffsetY)
             ZStack {
                 if showGridLines { GridLines(metrics: metrics) }
                 GridCells(metrics: metrics) { slot in
@@ -275,7 +280,7 @@ struct LauncherGridView: View {
                         }
                     }
                     .foregroundStyle(.white)
-                    .transition(.asymmetric(insertion: .scale(scale: 0.35, anchor: groupOrigin).combined(with: .opacity),
+                    .transition(.asymmetric(insertion: .scale(scale: 0.97, anchor: groupOrigin).combined(with: .opacity),
                                             removal: .opacity))
                     .zIndex(2)
                     // 押しているグループ自身は指の下で縮まないよう、別の層で薄く出すだけ
