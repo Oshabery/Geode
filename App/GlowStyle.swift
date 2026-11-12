@@ -19,6 +19,24 @@ enum GlowPalette {
     static let key = "glowHue"
     static let defaultHue: Double = 222
 
+    /// グラデーション（アプリアイコンの、コーラル → ピンク → パープル → ブルー → シアン）を使うか
+    static let gradientKey = "glowGradient"
+    /// グラデーションを選んだときの中心の色相（パープル）
+    static let gradientCenter: Double = 250
+    /// 中心の色相からのずれ（度）。色相のスライダーを動かすと、全体がそろってずれる
+    static let gradientOffsets: [Double] = [120, 70, 20, -22, -50]
+
+    /// 中心の色相（度）からずらした色相（0–1）
+    static func hue(_ center: Double, _ offset: Double) -> Double {
+        let h = (center + offset).truncatingRemainder(dividingBy: 360)
+        return (h < 0 ? h + 360 : h) / 360
+    }
+
+    /// 設定の見本用の色
+    static func gradientColors(_ center: Double) -> [Color] {
+        gradientOffsets.map { Color(hue: hue(center, $0), saturation: 0.75, brightness: 1) }
+    }
+
     /// ライトの強さ（1...10 の 10 段階、@AppStorage）。5 が基準
     static let intensityKey = "glowIntensity"
     static let defaultIntensity: Double = 5
@@ -231,6 +249,7 @@ func glowImageHue(_ file: String) -> Double? {
 struct GlowBackground: View {
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
     @AppStorage(GlowPalette.intensityKey) private var intensity = GlowPalette.defaultIntensity
+    @AppStorage(GlowPalette.gradientKey) private var gradient = false
     @ObservedObject private var motion = GlowMotion.shared
     @Environment(\.colorScheme) private var scheme
 
@@ -242,11 +261,36 @@ struct GlowBackground: View {
     var body: some View {
         let light = GlowLight(motion.tilt)
         let f = GlowPalette.factor(intensity)
-        if scheme == .light {
-            lightBody(light, f)
-        } else {
-            darkBody(light, f)
+        ZStack {
+            if scheme == .light {
+                lightBody(light, f)
+            } else {
+                darkBody(light, f)
+            }
+            if gradient {
+                gradientLights(light, f, isLight: scheme == .light)
+            }
         }
+    }
+
+    /// グラデーション: 左上からコーラル〜ピンク、右下からブルー〜シアンの光を足す（アプリアイコンの配色）
+    private func gradientLights(_ light: GlowLight, _ f: Double, isLight: Bool) -> some View {
+        let warm = Color(hue: GlowPalette.hue(themeHue, 120), saturation: isLight ? 0.5 : 0.75, brightness: 1)
+        let pink = Color(hue: GlowPalette.hue(themeHue, 70), saturation: isLight ? 0.45 : 0.7, brightness: 1)
+        let cool = Color(hue: GlowPalette.hue(themeHue, -40), saturation: isLight ? 0.5 : 0.8, brightness: 1)
+        let strength = min((isLight ? 0.35 : 0.45) * pow(f, 0.8), 0.85)
+        let shiftX = light.dx * 0.5
+        let shiftY = light.ty * 0.12
+        return ZStack {
+            RadialGradient(colors: [warm.opacity(strength), pink.opacity(strength * 0.4), .clear],
+                           center: UnitPoint(x: -0.05 + shiftX, y: 0.32 + shiftY),
+                           startRadius: 0, endRadius: 420 * (0.55 + 0.45 * f))
+            RadialGradient(colors: [cool.opacity(strength), .clear],
+                           center: UnitPoint(x: 1.05 + shiftX, y: 0.82 + shiftY),
+                           startRadius: 0, endRadius: 460 * (0.55 + 0.45 * f))
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
     }
 
     /// ライト: 明るい地に、下から淡い色の光
@@ -410,12 +454,31 @@ struct GlowTileBackground: View {
     var isOn = false
     var dim = false
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
+    @AppStorage(GlowPalette.gradientKey) private var gradient = false
     @Environment(\.colorScheme) private var scheme
+
+    /// グラデーションのときのタイルの色（上: ピンク寄り → 下: ブルー寄り）
+    private func gradientColors(isLight: Bool) -> [Color] {
+        let top = GlowPalette.hue(themeHue, 70), mid = GlowPalette.hue(themeHue, 20), bottom = GlowPalette.hue(themeHue, -30)
+        if isLight {
+            return isOn
+                ? [Color(hue: top, saturation: 0.8, brightness: 0.5), Color(hue: bottom, saturation: 0.8, brightness: 0.72)]
+                : [Color(hue: top, saturation: dim ? 0.03 : 0.07, brightness: 0.99),
+                   Color(hue: bottom, saturation: dim ? 0.1 : 0.28, brightness: dim ? 0.9 : 0.95)]
+        }
+        return isOn
+            ? [Color(hue: top, saturation: 0.25, brightness: 0.95), Color(hue: bottom, saturation: 0.45, brightness: 1)]
+            : [Color(hue: top, saturation: 0.9, brightness: 0.08),
+               Color(hue: mid, saturation: 0.85, brightness: dim ? 0.12 : 0.24),
+               Color(hue: bottom, saturation: 0.85, brightness: dim ? 0.2 : 0.45)]
+    }
 
     var body: some View {
         let hue = self.hue ?? themeHue / 360
         let shape = iconShape(size)
         let isLight = scheme == .light
+        // ベース色を指定していないタイルだけ、グラデーションの配色にする
+        let useGradient = gradient && self.hue == nil
         // ライトは白っぽいすりガラスで、オンのときは濃い色に反転する。ダークはこれまでどおり
         let colors: [Color] = isLight
             ? (isOn
@@ -427,7 +490,8 @@ struct GlowTileBackground: View {
                : [Color(hue: hue, saturation: 0.9, brightness: 0.07),
                   Color(hue: hue, saturation: 0.85, brightness: dim ? 0.2 : 0.42)])
         ZStack {
-            shape.fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
+            shape.fill(LinearGradient(colors: useGradient ? gradientColors(isLight: isLight) : colors,
+                                      startPoint: .top, endPoint: .bottom))
             GlowSurfaceLight(shape: shape, size: size, hue: hue,
                              glow: isLight && isOn ? 0.15 : (isOn ? 0.6 : (dim ? 0.12 : 0.42)),
                              paleSurface: !isOn)
@@ -546,13 +610,15 @@ struct GlowSymbol: View {
 struct GlowCircle: View {
     var tint: Color? = nil
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
+    @AppStorage(GlowPalette.gradientKey) private var gradient = false
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let glowHue = themeHue / 360
+        let topHue = gradient ? GlowPalette.hue(themeHue, 70) : themeHue / 360
+        let bottomHue = gradient ? GlowPalette.hue(themeHue, -30) : themeHue / 360
         let colors: [Color] = scheme == .light
-            ? [Color(hue: glowHue, saturation: 0.05, brightness: 0.99), Color(hue: glowHue, saturation: 0.25, brightness: 0.94)]
-            : [Color(hue: glowHue, saturation: 0.9, brightness: 0.08), Color(hue: glowHue, saturation: 0.85, brightness: 0.36)]
+            ? [Color(hue: topHue, saturation: 0.05, brightness: 0.99), Color(hue: bottomHue, saturation: 0.25, brightness: 0.94)]
+            : [Color(hue: topHue, saturation: 0.9, brightness: 0.08), Color(hue: bottomHue, saturation: 0.85, brightness: 0.36)]
         ZStack {
             Circle().fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
             if let tint { Circle().fill(tint.opacity(0.55)) }
@@ -587,41 +653,62 @@ extension View {
 /// 設定画面: グローの色を選ぶ
 struct GlowColorPicker: View {
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
+    @AppStorage(GlowPalette.gradientKey) private var gradient = false
+
+    private func swatch<S: ShapeStyle>(_ name: String, fill: S, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                ZStack {
+                    Circle().fill(Color.black)
+                    Circle().fill(fill)
+                    Circle().strokeBorder(Color.white.opacity(selected ? 0.95 : 0.25), lineWidth: selected ? 2 : 1)
+                }
+                .frame(width: 40, height: 40)
+                Text(name)
+                    .font(.caption2)
+                    .foregroundStyle(selected ? Color.primary : Color.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
+                    // アプリアイコンの配色。色相を変えると全体がそろってずれる
+                    swatch("グラデ",
+                           fill: LinearGradient(colors: GlowPalette.gradientColors(gradient ? themeHue : GlowPalette.gradientCenter),
+                                                startPoint: .topLeading, endPoint: .bottomTrailing).opacity(0.85),
+                           selected: gradient) {
+                        if !gradient { themeHue = GlowPalette.gradientCenter }
+                        gradient = true
+                    }
                     ForEach(GlowPalette.presets) { preset in
-                        let selected = themeHue == preset.hue
-                        Button {
+                        swatch(preset.name,
+                               fill: RadialGradient(colors: [preset.swatch, .clear], center: .bottom,
+                                                    startRadius: 0, endRadius: 26),
+                               selected: !gradient && themeHue == preset.hue) {
+                            gradient = false
                             themeHue = preset.hue
-                        } label: {
-                            VStack(spacing: 4) {
-                                ZStack {
-                                    Circle().fill(Color.black)
-                                    Circle().fill(RadialGradient(colors: [preset.swatch, .clear], center: .bottom,
-                                                                 startRadius: 0, endRadius: 26))
-                                    Circle().strokeBorder(Color.white.opacity(selected ? 0.95 : 0.25),
-                                                          lineWidth: selected ? 2 : 1)
-                                }
-                                .frame(width: 40, height: 40)
-                                Text(preset.name)
-                                    .font(.caption2)
-                                    .foregroundStyle(selected ? Color.primary : Color.secondary)
-                            }
                         }
-                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.vertical, 2)
             }
             HStack {
-                Text("色相")
+                Text(gradient ? "色相（全体）" : "色相")
                 Slider(value: $themeHue, in: 0...360, step: 1)
-                Circle()
-                    .fill(Color(hue: themeHue / 360, saturation: 0.85, brightness: 0.9))
-                    .frame(width: 20, height: 20)
+                if gradient {
+                    Circle()
+                        .fill(LinearGradient(colors: GlowPalette.gradientColors(themeHue),
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: 20, height: 20)
+                } else {
+                    Circle()
+                        .fill(Color(hue: themeHue / 360, saturation: 0.85, brightness: 0.9))
+                        .frame(width: 20, height: 20)
+                }
             }
         }
     }
