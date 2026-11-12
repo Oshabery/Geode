@@ -79,8 +79,9 @@ final class GlowMotion: ObservableObject {
     private func update(gx: Double, gy: Double) {
         guard manager.isDeviceMotionActive else { return }
         var base = neutral ?? (gx, gy)
-        // 寝転んだり置いたりして持ち方が変わっても、数秒で新しい姿勢が基準になる
-        base = (base.x * 0.99 + gx * 0.01, base.y * 0.99 + gy * 0.01)
+        // 寝転んだり置いたりして持ち方が変わっても、10 秒ほどで新しい姿勢が基準になる。
+        // 傾けたまま持っていると光がゆっくり戻る速さもこの係数で決まる
+        base = (base.x * 0.997 + gx * 0.003, base.y * 0.997 + gy * 0.003)
         neutral = base
         let rawX = max(-1, min(1, (gx - base.x) * 2.2 * strength))
         let rawY = max(-1, min(1, (gy - base.y) * 2.2 * strength))
@@ -180,6 +181,9 @@ struct GlowEdges<S: InsettableShape>: View {
     /// 下にあるタイルの色相（0–1）。nil なら設定のグローの色
     var hue: Double? = nil
     var dim = false
+    /// 屈折の色を光として足す（加算）か。暗いガラスの上では加算、明るい面（画像やオンのタイル）では
+    /// 加算だと色が見えなくなるので通常の重ね方にする
+    var additive = true
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
     @ObservedObject private var motion = GlowMotion.shared
 
@@ -207,7 +211,7 @@ struct GlowEdges<S: InsettableShape>: View {
         ZStack {
             shape.strokeBorder(prism(light), lineWidth: max(1.5, size * 0.035))
                 .opacity(dim ? 0.25 : 0.75)
-                .blendMode(.plusLighter)
+                .blendMode(additive ? .plusLighter : .normal)
             shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.12), .white.opacity(dim ? 0.35 : 0.8)],
                                               startPoint: light.far, endPoint: light.lit),
                                lineWidth: max(1, size * 0.012))
@@ -261,7 +265,7 @@ struct GlowTileBackground: View {
         ZStack {
             shape.fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
             GlowSurfaceLight(shape: shape, size: size, hue: hue, glow: isOn ? 0.6 : (dim ? 0.12 : 0.42))
-            GlowEdges(shape: shape, size: size, hue: hue, dim: dim)
+            GlowEdges(shape: shape, size: size, hue: hue, dim: dim, additive: !isOn)
         }
         .frame(width: size, height: size)
     }
@@ -307,8 +311,9 @@ struct GlowIcon: View {
                 if isOn { picture.colorInvert() } else { picture }
             }
             .overlay { GlowSurfaceLight(shape: iconShape(size), size: size, hue: hue, glow: 0) }
-            .overlay { GlowEdges(shape: iconShape(size), size: size, hue: hue) }
-            .background { GlowUnderLight(size: size, hue: hue) }
+            .overlay { GlowEdges(shape: iconShape(size), size: size, hue: hue, additive: false) }
+            // 外にこぼれる光は画像の色ではなく、設定のグローの色のまま
+            .background { GlowUnderLight(size: size) }
         } else {
             // ベース色を指定したアイテムはその色相、それ以外は設定のグローの色（nil）
             let hue = item.baseHSB.map { $0.h / 360 }
