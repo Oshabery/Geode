@@ -123,25 +123,27 @@ struct GlowLight {
 // MARK: 色
 
 /// アイコン画像の代表的な色相（0–1）。灰色に近い画像は nil。毎フレーム呼ばれるのでキャッシュする
-private var imageHueCache: [String: Double] = [:]
+@MainActor private var imageHueCache: [String: Double] = [:]
 
 @MainActor
 func glowImageHue(_ file: String) -> Double? {
     if let hit = imageHueCache[file] { return hit < 0 ? nil : hit }
     var result = -1.0
     if let cg = loadIconImage(file)?.cgImage {
+        // 画像を 1×1 に縮めて平均の色を取る
         var pixel = [UInt8](repeating: 0, count: 4)
-        if let context = CGContext(data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
-                                   space: CGColorSpaceCreateDeviceRGB(),
-                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+        pixel.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8,
+                                          bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
             context.interpolationQuality = .medium
             context.draw(cg, in: CGRect(x: 0, y: 0, width: 1, height: 1))
-            var h: CGFloat = 0, sat: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-            let color = UIColor(red: CGFloat(pixel[0]) / 255, green: CGFloat(pixel[1]) / 255,
-                                blue: CGFloat(pixel[2]) / 255, alpha: 1)
-            if color.getHue(&h, saturation: &sat, brightness: &b, alpha: &a), sat > 0.18, b > 0.15 {
-                result = Double(h)
-            }
+        }
+        var h: CGFloat = 0, sat: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        let color = UIColor(red: CGFloat(pixel[0]) / 255, green: CGFloat(pixel[1]) / 255,
+                            blue: CGFloat(pixel[2]) / 255, alpha: 1)
+        if color.getHue(&h, saturation: &sat, brightness: &b, alpha: &a), sat > 0.18, b > 0.15 {
+            result = Double(h)
         }
     }
     imageHueCache[file] = result
