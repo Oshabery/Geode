@@ -293,7 +293,8 @@ struct GlowTileBackground: View {
     }
 }
 
-/// タイルの外にこぼれる光（ぼかしの代わりに放射グラデーション）。光の側へ出る
+/// タイルの外にこぼれる光。光の側へ出る。
+/// ぼかしフィルターは使わず、端で透明になるなだらかな放射グラデーションで境界を見せない
 struct GlowUnderLight: View {
     let size: CGFloat
     var hue: Double? = nil
@@ -308,11 +309,20 @@ struct GlowUnderLight: View {
         let hue = self.hue ?? themeHue / 360
         let light = GlowLight(motion.tilt)
         let f = GlowPalette.factor(intensity)
-        Ellipse()
-            .fill(RadialGradient(
-                colors: [Color(hue: hue, saturation: 0.7, brightness: 1).opacity(min(0.4 * (0.4 + 0.6 * f), 0.75)), .clear],
-                center: .center, startRadius: 0, endRadius: size * 0.7))
-            .frame(width: size * 1.4, height: size * 0.6)
+        let color = Color(hue: hue, saturation: 0.7, brightness: 1)
+        let peak = min(0.4 * (0.4 + 0.6 * f), 0.75)
+        // 円の端でちょうど透明になる、なだらかな減り方のグラデーションを描き、縦につぶして楕円にする。
+        // 端に境界線が出ない（ぼかしフィルターを使わずに、ぼかしたような見た目にする）
+        Circle()
+            .fill(RadialGradient(stops: [
+                .init(color: color.opacity(peak), location: 0),
+                .init(color: color.opacity(peak * 0.62), location: 0.25),
+                .init(color: color.opacity(peak * 0.3), location: 0.5),
+                .init(color: color.opacity(peak * 0.1), location: 0.75),
+                .init(color: color.opacity(0), location: 1),
+            ], center: .center, startRadius: 0, endRadius: size * 0.85))
+            .frame(width: size * 1.7, height: size * 1.7)
+            .scaleEffect(x: 1, y: 0.45)
             // 傾き 0 ではタイルの真下。そこから少しだけ光の側へ寄る
             .offset(x: light.dx * size * Self.travel,
                     y: size * 0.45 + (light.dy - 1) * size * Self.travel)
