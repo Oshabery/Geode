@@ -271,6 +271,7 @@ struct LauncherGridView: View {
         }
         // 開いている間は ContentView がこのビューを最前面に描く（背景が下のボタンも覆えるように）
         .onChange(of: openGroup?.id) { _, id in store.groupLayerOpen = id != nil }
+        .onDisappear { store.groupLayerOpen = false }
         .onAppear(perform: openRequestedGroup)
         .onChange(of: store.requestedGroup) { _, _ in openRequestedGroup() }
     }
