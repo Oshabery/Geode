@@ -141,6 +141,8 @@ struct TileView: View {
     var highlighted = false
     /// オン / オフのスイッチの状態。true ならアイコンをネガポジ反転する（編集モードでは渡さない）
     var switchState: Bool? = nil
+    /// グローで傾けたとき、背景との視差でずらすか（通常モードのグリッドだけ。編集中は動かさない）
+    var parallax = false
     @AppStorage("glassIcons") private var glassIcons = false
     @AppStorage("labelWeight") private var labelWeight = Theme.defaultWeight
     @AppStorage("uiStyle") private var uiStyle = UIStyle.standard.rawValue
@@ -166,6 +168,7 @@ struct TileView: View {
                     }
                 }
             }
+            .modifier(GlowParallax(enabled: isGlow && parallax))
         } else {
             Color.clear
         }
@@ -247,7 +250,8 @@ struct LauncherGridView: View {
                 GridCells(metrics: metrics) { slot in
                     TileView(item: store.board.slots[slot], metrics: metrics,
                              highlighted: openGroup == nil && highlighted == slot,
-                             switchState: store.board.slots[slot].flatMap(store.switchState(for:)))
+                             switchState: store.board.slots[slot].flatMap(store.switchState(for:)),
+                             parallax: true)
                 }
                 .foregroundStyle(.tint)
 
@@ -260,10 +264,11 @@ struct LauncherGridView: View {
                         .zIndex(1)
                     GridCells(metrics: metrics) { slot in
                         if slot == groupSlot {
-                            TileView(item: group, metrics: metrics, highlighted: true)
+                            TileView(item: group, metrics: metrics, highlighted: true, parallax: true)
                         } else {
                             TileView(item: group.children[slot], metrics: metrics, highlighted: highlighted == slot,
-                                     switchState: group.children[slot].flatMap(store.switchState(for:)))
+                                     switchState: group.children[slot].flatMap(store.switchState(for:)),
+                                     parallax: true)
                         }
                     }
                     .foregroundStyle(.white)

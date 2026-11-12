@@ -127,6 +127,22 @@ struct GlowLight {
     var angle: Angle { .radians(Double(atan2(dy, dx))) }
 }
 
+/// 視差: 傾けるとアイコンが背景とは逆へ少しずれ、背景より手前に浮いて見える。
+/// 見た目だけずらす（当たり判定の位置は変えない）。傾きが 0 のとき、グロー以外では動かない
+struct GlowParallax: ViewModifier {
+    var enabled: Bool
+    @ObservedObject private var motion = GlowMotion.shared
+    /// ずれる最大の幅 (pt)。設定の「アイコンの浮き上がり」
+    @AppStorage("glowParallax") private var amount = 8.0
+    /// 傾けた方向と逆へずらす。実機で不自然ならここの符号を変える
+    static let direction: CGFloat = -1
+
+    func body(content: Content) -> some View {
+        let k = enabled ? Self.direction * CGFloat(amount) : 0
+        content.offset(x: motion.tilt.width * k, y: motion.tilt.height * k)
+    }
+}
+
 // MARK: 色
 
 /// アイコン画像の代表的な色相（0–1）。灰色に近い画像は nil。毎フレーム呼ばれるのでキャッシュする
@@ -474,6 +490,7 @@ struct GlowMotionSettings: View {
     @AppStorage("glowMotion") private var glowMotion = true
     @AppStorage("glowMotionStrength") private var strength = 1.0
     @AppStorage(GlowPalette.intensityKey) private var intensity = GlowPalette.defaultIntensity
+    @AppStorage("glowParallax") private var parallax = 8.0
 
     var body: some View {
         VStack(alignment: .leading) {
@@ -481,6 +498,12 @@ struct GlowMotionSettings: View {
             Slider(value: $intensity, in: 1...10, step: 1)
         }
         Toggle("傾きで光を動かす", isOn: $glowMotion)
+        if glowMotion {
+            VStack(alignment: .leading) {
+                Text("アイコンの浮き上がり（視差）: \(Int(parallax)) pt")
+                Slider(value: $parallax, in: 0...20, step: 1)
+            }
+        }
         if glowMotion {
             VStack(alignment: .leading) {
                 Text("動きの強さ: \(Int((strength * 100).rounded()))%")
