@@ -42,6 +42,8 @@ enum GlowPalette {
     static let defaultIntensity: Double = 5
     /// 段階を倍率に直す（5 → 1.0、1 → 0.2、10 → 2.0）
     static func factor(_ level: Double) -> Double { min(max(level, 1), 10) / defaultIntensity }
+    /// タイルやボタンの色の強さの倍率（5 → 1.0、1 → 0.56、10 → 1.55）。背景の光ほどは大きく変えない
+    static func tileScale(_ level: Double) -> Double { 0.45 + 0.55 * factor(level) }
 
     struct Preset: Identifiable {
         let name: String
@@ -474,7 +476,13 @@ struct GlowTileBackground: View {
     var dim = false
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
     @AppStorage(GlowPalette.gradientKey) private var gradient = false
+    @AppStorage(GlowPalette.intensityKey) private var intensity = GlowPalette.defaultIntensity
     @Environment(\.colorScheme) private var scheme
+
+    /// ライトの強さに応じて、光が当たる側の色の濃さ・明るさを変える（強さ 5 でこれまでと同じ）
+    private var k: Double { GlowPalette.tileScale(intensity) }
+    private func lit(_ value: Double, max upper: Double) -> Double { min(value * k, upper) }
+    private func litSat(_ value: Double) -> Double { min(value * (0.75 + 0.25 * k), 1) }
 
     /// グラデーションのときのタイルの色（上: ピンク寄り → 下: ブルー寄り）
     private func gradientColors(isLight: Bool) -> [Color] {
@@ -483,13 +491,13 @@ struct GlowTileBackground: View {
             return isOn
                 ? [Color(hue: top, saturation: 0.8, brightness: 0.5), Color(hue: bottom, saturation: 0.8, brightness: 0.72)]
                 : [Color(hue: top, saturation: dim ? 0.03 : 0.07, brightness: 0.99),
-                   Color(hue: bottom, saturation: dim ? 0.1 : 0.28, brightness: dim ? 0.9 : 0.95)]
+                   Color(hue: bottom, saturation: lit(dim ? 0.1 : 0.28, max: 0.6), brightness: dim ? 0.9 : 0.95)]
         }
         return isOn
             ? [Color(hue: top, saturation: 0.25, brightness: 0.95), Color(hue: bottom, saturation: 0.45, brightness: 1)]
             : [Color(hue: top, saturation: 0.9, brightness: 0.08),
-               Color(hue: mid, saturation: 0.85, brightness: dim ? 0.12 : 0.24),
-               Color(hue: bottom, saturation: 0.85, brightness: dim ? 0.2 : 0.45)]
+               Color(hue: mid, saturation: litSat(0.85), brightness: lit(dim ? 0.12 : 0.24, max: 0.45)),
+               Color(hue: bottom, saturation: litSat(0.85), brightness: lit(dim ? 0.2 : 0.45, max: 0.78))]
     }
 
     var body: some View {
@@ -503,16 +511,16 @@ struct GlowTileBackground: View {
             ? (isOn
                ? [Color(hue: hue, saturation: 0.85, brightness: 0.45), Color(hue: hue, saturation: 0.8, brightness: 0.72)]
                : [Color(hue: hue, saturation: dim ? 0.03 : 0.06, brightness: 0.99),
-                  Color(hue: hue, saturation: dim ? 0.1 : 0.28, brightness: dim ? 0.9 : 0.95)])
+                  Color(hue: hue, saturation: lit(dim ? 0.1 : 0.28, max: 0.6), brightness: dim ? 0.9 : 0.95)])
             : (isOn
                ? [Color(hue: hue, saturation: 0.25, brightness: 0.92), Color(hue: hue, saturation: 0.45, brightness: 1)]
                : [Color(hue: hue, saturation: 0.9, brightness: 0.07),
-                  Color(hue: hue, saturation: 0.85, brightness: dim ? 0.2 : 0.42)])
+                  Color(hue: hue, saturation: litSat(0.85), brightness: lit(dim ? 0.2 : 0.42, max: 0.75))])
         ZStack {
             shape.fill(LinearGradient(colors: useGradient ? gradientColors(isLight: isLight) : colors,
                                       startPoint: .top, endPoint: .bottom))
             GlowSurfaceLight(shape: shape, size: size, hue: hue,
-                             glow: isLight && isOn ? 0.15 : (isOn ? 0.6 : (dim ? 0.12 : 0.42)),
+                             glow: isLight && isOn ? 0.15 : (isOn ? 0.6 : lit(dim ? 0.12 : 0.42, max: 0.8)),
                              paleSurface: !isOn)
             GlowEdges(shape: shape, size: size, hue: hue, dim: dim, additive: !isOn)
         }
@@ -639,18 +647,23 @@ struct GlowCircle: View {
     var tint: Color? = nil
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
     @AppStorage(GlowPalette.gradientKey) private var gradient = false
+    @AppStorage(GlowPalette.intensityKey) private var intensity = GlowPalette.defaultIntensity
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
+        // ライトの強さに応じて色の濃さ・明るさを変える（強さ 5 でこれまでと同じ）
+        let k = GlowPalette.tileScale(intensity)
         let topHue = gradient ? GlowPalette.hue(themeHue, 70) : themeHue / 360
         let bottomHue = gradient ? GlowPalette.hue(themeHue, -30) : themeHue / 360
         let colors: [Color] = scheme == .light
-            ? [Color(hue: topHue, saturation: 0.05, brightness: 0.99), Color(hue: bottomHue, saturation: 0.25, brightness: 0.94)]
-            : [Color(hue: topHue, saturation: 0.9, brightness: 0.08), Color(hue: bottomHue, saturation: 0.85, brightness: 0.36)]
+            ? [Color(hue: topHue, saturation: 0.05, brightness: 0.99),
+               Color(hue: bottomHue, saturation: min(0.25 * k, 0.55), brightness: 0.94)]
+            : [Color(hue: topHue, saturation: 0.9, brightness: 0.08),
+               Color(hue: bottomHue, saturation: min(0.85 * (0.75 + 0.25 * k), 1), brightness: min(0.36 * k, 0.7))]
         ZStack {
             Circle().fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
             if let tint { Circle().fill(tint.opacity(0.55)) }
-            GlowSurfaceLight(shape: Circle(), size: 40, glow: 0.35)
+            GlowSurfaceLight(shape: Circle(), size: 40, glow: min(0.35 * k, 0.7))
             GlowEdges(shape: Circle(), size: 44)
         }
     }
