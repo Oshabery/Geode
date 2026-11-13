@@ -72,7 +72,7 @@ final class GlowMotion: ObservableObject {
     static let shared = GlowMotion()
 
     /// 持ち始めの姿勢からの傾き（長さ 1 までのベクトル）。x: 左右、y: 前後。止めている間は .zero。
-    /// 光や反射など描き直しの重いものが使う。少しなめらかにし、約 30 回/秒まで
+    /// 光や反射など描き直しの重いものが使う。少しなめらかにし、120 回/秒まで
     @Published private(set) var tilt: CGSize = .zero
     /// 設定の「動きの強さ」
     var strength: Double = 1
@@ -87,7 +87,6 @@ final class GlowMotion: ObservableObject {
     private var lastPitch: Double = 0
     private var smoothed: (x: Double, y: Double) = (0, 0)
     private var fast: (x: Double, y: Double) = (0, 0)
-    private var frame = 0
 
     private init() {}
 
@@ -97,11 +96,13 @@ final class GlowMotion: ObservableObject {
         neutral = nil
         smoothed = (0, 0)
         fast = (0, 0)
-        manager.deviceMotionUpdateInterval = 1.0 / 60
+        // ProMotion（120Hz）の画面に合わせて 120 回/秒で読む
+        manager.deviceMotionUpdateInterval = 1.0 / 120
         manager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
             guard let g = motion?.gravity else { return }
             let gx = g.x, gy = g.y, gz = g.z
-            Task { @MainActor in self?.update(gx: gx, gy: gy, gz: gz) }
+            // メインキューで呼ばれるので、そのまま処理する（Task を挟むと 1 フレーム遅れることがある）
+            MainActor.assumeIsolated { self?.update(gx: gx, gy: gy, gz: gz) }
         }
     }
 
@@ -136,16 +137,14 @@ final class GlowMotion: ObservableObject {
         let length = sqrt(rawX * rawX + rawY * rawY)
         if length > 1 { rawX /= length; rawY /= length }
 
-        // アイコンの視差: ほぼ遅れなく追従させる（軽い処理なので毎回）
-        fast = (fast.x * 0.35 + rawX * 0.65, fast.y * 0.35 + rawY * 0.65)
+        // アイコンの視差: ほぼ遅れなく追従させる
+        fast = (fast.x * 0.4 + rawX * 0.6, fast.y * 0.4 + rawY * 0.6)
         GlowParallaxMotion.shared.set(CGSize(width: fast.x, height: fast.y))
 
-        // 光や反射: 少しなめらかにして、描き直しは 2 回に 1 回
-        smoothed = (smoothed.x * 0.6 + rawX * 0.4, smoothed.y * 0.6 + rawY * 0.4)
-        frame += 1
-        guard frame % 2 == 0 else { return }
+        // 光・反射・影: 120 回/秒で毎回更新する。なめらかさは残しつつ遅れは約 0.02 秒
+        smoothed = (smoothed.x * 0.65 + rawX * 0.35, smoothed.y * 0.65 + rawY * 0.35)
         let next = CGSize(width: smoothed.x, height: smoothed.y)
-        if abs(next.width - tilt.width) > 0.006 || abs(next.height - tilt.height) > 0.006 {
+        if abs(next.width - tilt.width) > 0.003 || abs(next.height - tilt.height) > 0.003 {
             tilt = next
         }
     }

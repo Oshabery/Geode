@@ -31,6 +31,8 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSCameraUsageDescription: ライトのオン / オフを切り替えるために使います。
         NSAppleMusicUsageDescription: ミュージックの再生 / 一時停止、曲送りに使います。
+        # 60Hz を超える表示（ProMotion の 120Hz）をアプリに許可する
+        CADisableMinimumFrameDurationOnPhone: true
         NSMotionUsageDescription: 端末の傾きに合わせて、画面の光の向きを動かすために使います。
         CFBundleURLTypes:
           - CFBundleURLName: geode
