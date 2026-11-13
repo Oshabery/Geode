@@ -220,6 +220,8 @@ struct GroupBackdrop: View {
     let gridFrame: CGRect
     /// 押しているグループの中心（グリッド内の座標）
     let focus: CGPoint?
+    /// 明るい背景にする（グローのライト）。それ以外はこれまでどおり暗いすりガラス
+    var light = false
 
     var body: some View {
         let screen = UIScreen.main.bounds.size
@@ -227,14 +229,25 @@ struct GroupBackdrop: View {
         let center = focus.map { CGPoint(x: gridFrame.minX + $0.x, y: gridFrame.minY + $0.y) }
             ?? CGPoint(x: screen.width / 2, y: screen.height / 2)
         ZStack {
-            Rectangle().fill(.ultraThinMaterial)
-                .environment(\.colorScheme, .dark)
-            // 中心は薄く、離れるほど暗い。どこを中心にしても画面を覆える大きさで描く
-            Rectangle()
-                .fill(RadialGradient(colors: [.black.opacity(0.08), .black.opacity(0.5)],
-                                     center: .center, startRadius: 50, endRadius: 460))
-                .frame(width: 2400, height: 2400)
-                .position(center)
+            if light {
+                // 明るいすりガラス。中心は透けて、離れるほど白い霧がかかる
+                Rectangle().fill(.ultraThinMaterial)
+                    .environment(\.colorScheme, .light)
+                Rectangle()
+                    .fill(RadialGradient(colors: [.white.opacity(0.1), .white.opacity(0.6)],
+                                         center: .center, startRadius: 50, endRadius: 460))
+                    .frame(width: 2400, height: 2400)
+                    .position(center)
+            } else {
+                Rectangle().fill(.ultraThinMaterial)
+                    .environment(\.colorScheme, .dark)
+                // 中心は薄く、離れるほど暗い。どこを中心にしても画面を覆える大きさで描く
+                Rectangle()
+                    .fill(RadialGradient(colors: [.black.opacity(0.08), .black.opacity(0.5)],
+                                         center: .center, startRadius: 50, endRadius: 460))
+                    .frame(width: 2400, height: 2400)
+                    .position(center)
+            }
         }
         .frame(width: screen.width, height: screen.height)
         .clipped()
@@ -267,7 +280,9 @@ struct LauncherGridView: View {
     @AppStorage("uiStyle") private var uiStyleRaw = UIStyle.standard.rawValue
     @Environment(\.colorScheme) private var currentScheme
     /// グループ階層の中身の配色。背景が暗いので、グローではダークに固定する（標準はこれまでどおり）
-    private var groupScheme: ColorScheme { uiStyleRaw == UIStyle.glow.rawValue ? .dark : currentScheme }
+    private var isGlowLight: Bool { uiStyleRaw == UIStyle.glow.rawValue && currentScheme == .light }
+    /// グループ階層の中身の配色。グローのライトでは背景も明るいので、ライトのまま描く
+    private var groupScheme: ColorScheme { currentScheme }
 
     /// グループ階層に入るときの動き。出だしは速く（押した瞬間にほぼ見える）、
     /// 終わりにかけて長くゆっくり落ち着く（余韻）
@@ -324,7 +339,8 @@ struct LauncherGridView: View {
                     // グループ展開時の背景: 画面全体を覆う暗いすりガラス。
                     // 押しているグループの周りだけ少し明るくして、1 枚上の階層に上がった感じを出す
                     GroupBackdrop(gridFrame: geo.frame(in: .global),
-                                  focus: groupSlot.map { metrics.center($0) })
+                                  focus: groupSlot.map { metrics.center($0) },
+                                  light: isGlowLight)
                         .transition(.opacity)
                         .zIndex(1)
                     // グループの中身: グループのマスから外へ広がるように、近いものから順に出てくる。
@@ -342,7 +358,6 @@ struct LauncherGridView: View {
                         }
                     }
                     .foregroundStyle(.white)
-                    // グループの背景は暗いので、グローのライトでも中身はダークの見た目で描く
                     .environment(\.colorScheme, groupScheme)
                     .transition(.asymmetric(insertion: .identity, removal: .opacity))
                     .zIndex(2)
