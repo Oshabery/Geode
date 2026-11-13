@@ -78,7 +78,9 @@ struct ContentView: View {
                     .zIndex(store.groupLayerOpen ? 1 : 0)
             }
 
-            DockBar(editing: editing)
+            if DockBar.enabled {
+                DockBar(editing: editing)
+            }
         }
         .background {
             if isGlow {
@@ -248,11 +250,13 @@ struct SettingsView: View {
                     Stepper("行: \(store.board.layout.rows)", value: layoutBinding(\.rows), in: 3...8)
                 }
 
-                SettingsGroup("下部の 3 つのボタン", id: "dock",
-                              footer: "中央のボタンを基準に、左右のボタンをどれだけ離すかを決めます。画面の幅を超える値にしても、端で止まります。") {
-                    VStack(alignment: .leading) {
-                        Text("ボタンの間隔: \(Int(dockSpacing)) pt")
-                        Slider(value: $dockSpacing, in: 0...150, step: 1)
+                if DockBar.enabled {
+                    SettingsGroup("下部の 3 つのボタン", id: "dock",
+                                  footer: "中央のボタンを基準に、左右のボタンをどれだけ離すかを決めます。画面の幅を超える値にしても、端で止まります。") {
+                        VStack(alignment: .leading) {
+                            Text("ボタンの間隔: \(Int(dockSpacing)) pt")
+                            Slider(value: $dockSpacing, in: 0...150, step: 1)
+                        }
                     }
                 }
 
