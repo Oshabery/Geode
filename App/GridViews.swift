@@ -186,6 +186,26 @@ struct TileView: View {
     }
 }
 
+/// グループの中身のアイコン 1 つ分の出方。表示された瞬間に、ずらした位置・少し小さい・透明な状態から
+/// 遅れて定位置へ動く（親ごと挿入されると子の transition は効かないため、状態で動かす）
+struct GroupChildAppear<Content: View>: View {
+    let delay: Double
+    let from: CGSize
+    let animation: Animation
+    @ViewBuilder let content: Content
+    @State private var shown = false
+
+    var body: some View {
+        content
+            .offset(shown ? .zero : from)
+            .scaleEffect(shown ? 1 : 0.94)
+            .opacity(shown ? 1 : 0)
+            .onAppear {
+                withAnimation(animation.delay(delay)) { shown = true }
+            }
+    }
+}
+
 /// グループ階層の背景。グリッドの枠で切れないよう、画面全体（上のボタン・下のボタン・画面の端まで）を覆う。
 /// 触っても反応しない（下のボタンなどの操作を邪魔しない）
 struct GroupBackdrop: View {
@@ -247,6 +267,34 @@ struct LauncherGridView: View {
     /// グループ階層に入るときの動き。出だしは速く（押した瞬間にほぼ見える）、
     /// 終わりにかけて長くゆっくり落ち着く（余韻）
     private static let openAnimation = Animation.timingCurve(0.2, 0.75, 0.1, 1.0, duration: 0.3)
+    /// 中身が出てくるときの、距離 1 あたりの遅れ（秒）と移動量（マスの間隔に対する割合）
+    private static let entranceDelayPerUnit = 0.035
+    private static let entranceTravelPerUnit: CGFloat = 0.09
+    /// これより遠いものは、すべてこの距離として扱う
+    private static let entranceMaxDistance = 3.0
+
+    /// グループのマスからの距離。上下左右の 1 マスを 1、斜めの 1 マスを 1.5 として数え、3 で頭打ち
+    private func childDistance(_ slot: Int, from origin: Int, columns: Int) -> Double {
+        let dx = abs(slot % columns - origin % columns)
+        let dy = abs(slot / columns - origin / columns)
+        let diagonal = min(dx, dy)
+        let straight = max(dx, dy) - diagonal
+        return min(Double(diagonal) * 1.5 + Double(straight), Self.entranceMaxDistance)
+    }
+
+    /// 中身のアイコンの出方: 遅れと、動き出す位置（グループのマスの方向へずらした位置）
+    private func childEntrance(_ slot: Int, metrics: GridMetrics) -> (delay: Double, from: CGSize) {
+        guard let origin = groupSlot else { return (0, .zero) }
+        let distance = childDistance(slot, from: origin, columns: metrics.layout.columns)
+        let a = metrics.center(origin), b = metrics.center(slot)
+        let vx = b.x - a.x, vy = b.y - a.y
+        let length = max(sqrt(vx * vx + vy * vy), 1)
+        let step = ((metrics.tile + metrics.gapX) + (metrics.cellSize.height + metrics.gapY)) / 2
+        let travel = step * Self.entranceTravelPerUnit * CGFloat(distance)
+        return (distance * Self.entranceDelayPerUnit,
+                CGSize(width: -vx / length * travel, height: -vy / length * travel))
+    }
+
     /// 戻るときは短く、すっと消える
     private static let closeDuration = 0.22
     private static let closeAnimation = Animation.timingCurve(0.3, 0.0, 0.2, 1.0, duration: closeDuration)
@@ -273,21 +321,24 @@ struct LauncherGridView: View {
                                   focus: groupSlot.map { metrics.center($0) })
                         .transition(.opacity)
                         .zIndex(1)
-                    // グループの中身: 押している指の位置から外へ広がるように出てくる。消えるときは薄くなるだけ
+                    // グループの中身: グループのマスから外へ広がるように、近いものから順に出てくる。
+                    // 遠いものほど少し遅れ、少し長い距離を動く。消えるときは全体が薄くなるだけ
                     GridCells(metrics: metrics) { slot in
                         if slot == groupSlot {
                             Color.clear
                         } else {
-                            TileView(item: group.children[slot], metrics: metrics, highlighted: highlighted == slot,
-                                     switchState: group.children[slot].flatMap(store.switchState(for:)),
-                                     parallax: true)
+                            let entrance = childEntrance(slot, metrics: metrics)
+                            GroupChildAppear(delay: entrance.delay, from: entrance.from, animation: Self.openAnimation) {
+                                TileView(item: group.children[slot], metrics: metrics, highlighted: highlighted == slot,
+                                         switchState: group.children[slot].flatMap(store.switchState(for:)),
+                                         parallax: true)
+                            }
                         }
                     }
                     .foregroundStyle(.white)
                     // グループの背景は暗いので、グローのライトでも中身はダークの見た目で描く
                     .environment(\.colorScheme, groupScheme)
-                    .transition(.asymmetric(insertion: .scale(scale: 0.92, anchor: groupOrigin).combined(with: .opacity),
-                                            removal: .opacity))
+                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
                     .zIndex(2)
                     // 押しているグループ自身は指の下で縮まないよう、別の層で薄く出すだけ
                     GridCells(metrics: metrics) { slot in
