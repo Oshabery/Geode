@@ -19,6 +19,9 @@ enum GlowPalette {
     static let key = "glowHue"
     static let defaultHue: Double = 222
 
+    /// モノトーン（色を抜いた白黒のグロー）を使うか
+    static let monoKey = "glowMono"
+
     /// グラデーション（アプリアイコンの、コーラル → ピンク → パープル → ブルー → シアン）を使うか
     static let gradientKey = "glowGradient"
     /// グラデーションを選んだときの中心の色相（パープル）
@@ -243,6 +246,14 @@ func glowImageHue(_ file: String) -> Double? {
     return result < 0 ? nil : result
 }
 
+extension View {
+    /// モノトーンのときだけ色を抜く（それ以外は何も足さない）
+    @ViewBuilder
+    func glowMonochrome(_ on: Bool) -> some View {
+        if on { self.saturation(0) } else { self }
+    }
+}
+
 // MARK: 背景
 
 /// ごく暗いグレーの地に、下から色の付いた光が差し込む背景。
@@ -259,7 +270,14 @@ struct GlowBackground: View {
     /// ライトの地の色
     private static let lightBase = Color(white: 0.95)
 
+    @AppStorage(GlowPalette.monoKey) private var mono = false
+
     var body: some View {
+        content.glowMonochrome(mono)
+    }
+
+    @ViewBuilder
+    private var content: some View {
         let light = GlowLight(motion.tilt)
         let f = GlowPalette.factor(intensity)
         if scheme == .light {
@@ -499,7 +517,14 @@ struct GlowTileBackground: View {
                Color(hue: bottom, saturation: litSat(0.85), brightness: lit(dim ? 0.2 : 0.45, max: 0.78))]
     }
 
+    @AppStorage(GlowPalette.monoKey) private var mono = false
+
     var body: some View {
+        content.glowMonochrome(mono && hue == nil)
+    }
+
+    @ViewBuilder
+    private var content: some View {
         let hue = self.hue ?? themeHue / 360
         let shape = iconShape(size)
         let isLight = scheme == .light
@@ -540,7 +565,14 @@ struct GlowUnderLight: View {
     /// 傾きで動く幅（タイルの大きさに対する割合）。大きく動きすぎないよう小さくしている
     private static let travel: CGFloat = 0.12
 
+    @AppStorage(GlowPalette.monoKey) private var mono = false
+
     var body: some View {
+        content.glowMonochrome(mono && hue == nil)
+    }
+
+    @ViewBuilder
+    private var content: some View {
         let hue = self.hue ?? themeHue / 360
         let light = GlowLight(motion.tilt)
         let f = GlowPalette.factor(intensity)
@@ -618,7 +650,14 @@ struct GlowSymbol: View {
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
     @Environment(\.colorScheme) private var scheme
 
+    @AppStorage(GlowPalette.monoKey) private var mono = false
+
     var body: some View {
+        content.glowMonochrome(mono && hue == nil)
+    }
+
+    @ViewBuilder
+    private var content: some View {
         let hue = self.hue ?? themeHue / 360
         let image = Image(systemName: name).font(.system(size: size * 0.42, weight: .regular))
         if scheme == .light {
@@ -649,7 +688,14 @@ struct GlowCircle: View {
     @AppStorage(GlowPalette.intensityKey) private var intensity = GlowPalette.defaultIntensity
     @Environment(\.colorScheme) private var scheme
 
+    @AppStorage(GlowPalette.monoKey) private var mono = false
+
     var body: some View {
+        content.glowMonochrome(mono)
+    }
+
+    @ViewBuilder
+    private var content: some View {
         // ライトの強さに応じて色の濃さ・明るさを変える（強さ 5 でこれまでと同じ）
         let k = GlowPalette.tileScale(intensity)
         let topHue = gradient ? GlowPalette.hue(themeHue, 70) : themeHue / 360
@@ -694,6 +740,7 @@ extension View {
 struct GlowColorPicker: View {
     @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
     @AppStorage(GlowPalette.gradientKey) private var gradient = false
+    @AppStorage(GlowPalette.monoKey) private var mono = false
 
     private func swatch<S: ShapeStyle>(_ name: String, fill: S, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -720,22 +767,33 @@ struct GlowColorPicker: View {
                     swatch("グラデ",
                            fill: LinearGradient(colors: GlowPalette.gradientColors(gradient ? themeHue : GlowPalette.gradientCenter),
                                                 startPoint: .topLeading, endPoint: .bottomTrailing).opacity(0.85),
-                           selected: gradient) {
-                        if !gradient { themeHue = GlowPalette.gradientCenter }
+                           selected: gradient && !mono) {
+                        if !gradient || mono { themeHue = GlowPalette.gradientCenter }
                         gradient = true
+                        mono = false
+                    }
+                    // 色を抜いた白黒
+                    swatch("モノトーン",
+                           fill: RadialGradient(colors: [Color(white: 0.85), .clear], center: .bottom,
+                                                startRadius: 0, endRadius: 26),
+                           selected: mono) {
+                        mono = true
+                        gradient = false
                     }
                     ForEach(GlowPalette.presets) { preset in
                         swatch(preset.name,
                                fill: RadialGradient(colors: [preset.swatch, .clear], center: .bottom,
                                                     startRadius: 0, endRadius: 26),
-                               selected: !gradient && themeHue == preset.hue) {
+                               selected: !gradient && !mono && themeHue == preset.hue) {
                             gradient = false
+                            mono = false
                             themeHue = preset.hue
                         }
                     }
                 }
                 .padding(.vertical, 2)
             }
+            if !mono {
             HStack {
                 Text(gradient ? "色相（全体）" : "色相")
                 Slider(value: $themeHue, in: 0...360, step: 1)
@@ -749,6 +807,7 @@ struct GlowColorPicker: View {
                         .fill(Color(hue: themeHue / 360, saturation: 0.85, brightness: 0.9))
                         .frame(width: 20, height: 20)
                 }
+            }
             }
         }
     }
