@@ -192,8 +192,15 @@ struct GroupChildAppear<Content: View>: View {
     let delay: Double
     let from: CGSize
     let animation: Animation
-    @ViewBuilder let content: Content
+    let content: Content
     @State private var shown = false
+
+    init(delay: Double, from: CGSize, animation: Animation, @ViewBuilder content: () -> Content) {
+        self.delay = delay
+        self.from = from
+        self.animation = animation
+        self.content = content()
+    }
 
     var body: some View {
         content
@@ -257,8 +264,6 @@ struct LauncherGridView: View {
     @State private var touchStart: Int?
     /// 指が触れている間 true（最初のイベントの判定用。触れた場所が格子の外だと touchStart は nil になる）
     @State private var touching = false
-    /// グループの中身が広がり出す中心（グリッド内の割合）。押した指の位置
-    @State private var groupOrigin: UnitPoint = .center
     @AppStorage("uiStyle") private var uiStyleRaw = UIStyle.standard.rawValue
     @Environment(\.colorScheme) private var currentScheme
     /// グループ階層の中身の配色。背景が暗いので、グローではダークに固定する（標準はこれまでどおり）
@@ -291,7 +296,8 @@ struct LauncherGridView: View {
         let length = max(sqrt(vx * vx + vy * vy), 1)
         let step = ((metrics.tile + metrics.gapX) + (metrics.cellSize.height + metrics.gapY)) / 2
         let travel = step * Self.entranceTravelPerUnit * CGFloat(distance)
-        return (distance * Self.entranceDelayPerUnit,
+        // 隣のマス（距離 1）は遅れなしで出だしを速く保ち、それより遠いものだけ遅らせる
+        return (max(distance - 1, 0) * Self.entranceDelayPerUnit,
                 CGSize(width: -vx / length * travel, height: -vy / length * travel))
     }
 
@@ -357,11 +363,7 @@ struct LauncherGridView: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        let origin = UnitPoint(x: value.location.x / max(geo.size.width, 1),
-                                               y: value.location.y / max(geo.size.height, 1))
-                        touchMoved(metrics.slot(at: value.location), origin: origin)
-                    }
+                    .onChanged { touchMoved(metrics.slot(at: $0.location)) }
                     .onEnded { touchEnded(metrics.slot(at: $0.location)) }
             )
             .animation(openGroup != nil ? Self.openAnimation : Self.closeAnimation, value: openGroup?.id)
@@ -383,12 +385,11 @@ struct LauncherGridView: View {
         .onChange(of: store.requestedGroup) { _, _ in openRequestedGroup() }
     }
 
-    private func touchMoved(_ slot: Int?, origin: UnitPoint) {
+    private func touchMoved(_ slot: Int?) {
         if !touching {
             touching = true
             touchStart = slot
             if openGroup == nil, let slot, let item = store.board.slots[slot], item.kind == .group {
-                groupOrigin = origin
                 openGroup = item
                 groupSlot = slot
                 // グループ階層に入った合図: カチッとした硬めの触覚
@@ -424,7 +425,6 @@ struct LauncherGridView: View {
         guard let id = store.requestedGroup else { return }
         store.requestedGroup = nil
         if let entry = store.board.slots.first(where: { $0.value.id == id }) {
-            groupOrigin = .center   // ウィジェットから開いたときは指の位置が無いので画面の中央から
             openGroup = entry.value
             groupSlot = entry.key
         }
