@@ -72,6 +72,19 @@ set -e
 # 要点だけ表示する（全文は build/<mode>.log）
 grep -E "error:|Test Case .*(passed|failed|skipped)|Executed [0-9]+ test|\*\* (BUILD|TEST) (SUCCEEDED|FAILED) \*\*" "build/$MODE.log" || true
 
+# 失敗したときは、原因を追えるようにログの末尾と使えるシミュレータを表示する
+# （CI ではログファイルを開けないため、ここに出さないと詳細が分からない）
+if [ $STATUS -ne 0 ]; then
+  [ -n "${GITHUB_ACTIONS:-}" ] && echo "::group::xcodebuild のログ（末尾 80 行）"
+  echo "---- build/$MODE.log の末尾 ----"
+  tail -n 80 "build/$MODE.log"
+  [ -n "${GITHUB_ACTIONS:-}" ] && echo "::endgroup::"
+  [ -n "${GITHUB_ACTIONS:-}" ] && echo "::group::使えるシミュレータ"
+  echo "---- 使えるシミュレータ（選んだもの: $DEVICE_ID）----"
+  xcrun simctl list devices available | grep -E "^-- |iPhone" || true
+  [ -n "${GITHUB_ACTIONS:-}" ] && echo "::endgroup::"
+fi
+
 # UI Test の画面を取り出す
 if [ "$MODE" = ui ] || [ "$MODE" = all ]; then
   rm -rf build/screenshots
