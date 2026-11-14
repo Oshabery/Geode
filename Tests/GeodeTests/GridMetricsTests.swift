@@ -23,6 +23,15 @@ final class GridMetricsTests: XCTestCase {
         XCTAssertNil(m.slot(at: CGPoint(x: size.width - 1, y: size.height - 1)))
     }
 
+    /// 外周のアイコンは、格子の少し外側を押しても当たる（場所によって反応が違う問題の再発防止）
+    func testTouchesJustOutsideTheEdgeHitTheNearestCell() {
+        let m = metrics(iconScale: 0.6)
+        let rect = m.latticeRect
+        XCTAssertEqual(m.slot(at: CGPoint(x: rect.minX - 10, y: rect.minY + 5)), 0)
+        XCTAssertEqual(m.slot(at: CGPoint(x: rect.maxX + 10, y: rect.maxY + 10)), layout.capacity - 1)
+        XCTAssertNil(m.slot(at: CGPoint(x: rect.minX - GridMetrics.edgeHitSlop - 5, y: rect.midY)))
+    }
+
     func testLatticeIsCentredHorizontally() {
         let m = metrics()
         let left = m.latticeRect.minX
@@ -65,5 +74,34 @@ final class GroupEntranceTests: XCTestCase {
     func testFarCellsAreCappedAtThree() {
         XCTAssertEqual(GroupEntrance.distance(24, from: 0, columns: 5), GroupEntrance.maxDistance)
         XCTAssertEqual(GroupEntrance.distance(3, from: 0, columns: 5), 3)
+    }
+}
+
+/// グループを長押ししても開かないことがある不具合の再発防止
+final class TouchSessionTests: XCTestCase {
+    func testFirstEventStartsATouch() {
+        var session = TouchSession()
+        XCTAssertTrue(session.begin(at: CGPoint(x: 10, y: 10)))
+        XCTAssertTrue(session.isActive)
+    }
+
+    func testLaterEventsOfTheSameTouchAreNotNew() {
+        var session = TouchSession()
+        _ = session.begin(at: CGPoint(x: 10, y: 10))
+        XCTAssertFalse(session.begin(at: CGPoint(x: 10, y: 10)))
+    }
+
+    func testNextTouchIsNewAfterANormalEnd() {
+        var session = TouchSession()
+        _ = session.begin(at: CGPoint(x: 10, y: 10))
+        session.end()
+        XCTAssertTrue(session.begin(at: CGPoint(x: 10, y: 10)))
+    }
+
+    /// 終わりの通知が来なかった（取り消された）あとでも、次のタッチは新しいタッチになる
+    func testNextTouchIsNewEvenIfTheEndWasMissed() {
+        var session = TouchSession()
+        _ = session.begin(at: CGPoint(x: 10, y: 10))
+        XCTAssertTrue(session.begin(at: CGPoint(x: 200, y: 300)))
     }
 }

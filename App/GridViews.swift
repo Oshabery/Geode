@@ -65,10 +65,14 @@ struct GridMetrics {
                        y: marginY + r * (cellSize.height + gapY) + cellSize.height / 2)
     }
 
-    /// 座標 → スロット番号。格子の外（何も無い余白）は nil
+    /// 格子の外側でも、この距離までは一番近いマスに当たったとみなす (pt)。
+    /// 外周のアイコンは、外側に間隔の半分しか当たり判定が無く、指が少しずれると反応しなかったため
+    static let edgeHitSlop: CGFloat = 16
+
+    /// 座標 → スロット番号。格子の外（何も無い余白）は nil。ただし外周から edgeHitSlop までは近いマスに当てる
     func slot(at p: CGPoint) -> Int? {
         let rect = latticeRect
-        guard rect.contains(p) else { return nil }
+        guard rect.insetBy(dx: -Self.edgeHitSlop, dy: -Self.edgeHitSlop).contains(p) else { return nil }
         let c = Int(((p.x - rect.minX) / (tile + gapX)).rounded(.down))
         let r = Int(((p.y - rect.minY) / (cellSize.height + gapY)).rounded(.down))
         return min(max(r, 0), layout.rows - 1) * layout.columns + min(max(c, 0), layout.columns - 1)
@@ -186,6 +190,27 @@ struct TileView: View {
     }
 }
 
+/// 1 回のタッチの始まりと終わり。
+/// 以前は「触れている」フラグだけで判断していたため、タッチが取り消されて終わりの通知が来ないと
+/// フラグが立ったままになり、次にグループを長押ししても開かないことがあった
+struct TouchSession {
+    private(set) var isActive = false
+    private var start: CGPoint?
+
+    /// 新しいタッチの始まりなら true。同じタッチの途中なら false
+    mutating func begin(at point: CGPoint) -> Bool {
+        if isActive, start == point { return false }
+        isActive = true
+        start = point
+        return true
+    }
+
+    mutating func end() {
+        isActive = false
+        start = nil
+    }
+}
+
 /// グループの中身が出てくる順番を決める距離のルール（テストできるよう独立させている）
 enum GroupEntrance {
     /// これより遠いものは、すべてこの距離として扱う
@@ -290,8 +315,12 @@ struct LauncherGridView: View {
     @State private var groupSlot: Int?
     @State private var highlighted: Int?
     @State private var touchStart: Int?
-    /// 指が触れている間 true（最初のイベントの判定用。触れた場所が格子の外だと touchStart は nil になる）
-    @State private var touching = false
+    /// いまのタッチ。新しいタッチの始まりを、指を置いた位置で見分ける
+    @State private var session = TouchSession()
+    /// 指が触れている間 true。タッチがシステムに取り消されたとき（onEnded が呼ばれない）も自動で false に戻る
+    @GestureState private var pressing = false
+    /// グループを開いたときの触覚。毎回作ると触覚エンジンの起動待ちで遅れるので、作り置きして準備しておく
+    @State private var openHaptic = UIImpactFeedbackGenerator(style: .rigid)
     @AppStorage("uiStyle") private var uiStyleRaw = UIStyle.standard.rawValue
     @Environment(\.colorScheme) private var currentScheme
     /// グループ階層の中身の配色。背景が暗いので、グローではダークに固定する（標準はこれまでどおり）
@@ -382,7 +411,8 @@ struct LauncherGridView: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { touchMoved(metrics.slot(at: $0.location)) }
+                    .updating($pressing) { _, state, _ in state = true }
+                    .onChanged { touchMoved(metrics.slot(at: $0.location), startedAt: $0.startLocation) }
                     .onEnded { touchEnded(metrics.slot(at: $0.location)) }
             )
             .animation(openGroup != nil ? Self.openAnimation : Self.closeAnimation, value: openGroup?.id)
@@ -399,21 +429,31 @@ struct LauncherGridView: View {
                 }
             }
         }
+        .onAppear { openHaptic.prepare() }
         .onDisappear { store.groupLayerOpen = false }
+        // 指が離れたのに onEnded が来なかった（取り消された）ときは、状態を戻す。
+        // 通常の終わりでは onEnded が先に状態を戻すので、ここでは何もしない
+        .onChange(of: pressing) { _, isPressing in
+            guard !isPressing else { return }
+            DispatchQueue.main.async { touchCancelled() }
+        }
         .onAppear(perform: openRequestedGroup)
         .onChange(of: store.requestedGroup) { _, _ in openRequestedGroup() }
     }
 
-    private func touchMoved(_ slot: Int?) {
-        if !touching {
-            touching = true
+    private func touchMoved(_ slot: Int?, startedAt start: CGPoint) {
+        // 前のタッチの終わりを受け取れなかった場合でも、置いた位置が変われば新しいタッチとして扱う
+        if session.begin(at: start) {
             touchStart = slot
-            if openGroup == nil, let slot, let item = store.board.slots[slot], item.kind == .group {
-                openGroup = item
-                groupSlot = slot
-                // グループ階層に入った合図: カチッとした硬めの触覚
-                UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 1.0)
-            }
+        }
+        // 指が触れている間は、グループの上にある限りレイヤーを開く。
+        // 置いた瞬間に少しずれていても、指がグループの上に来た時点で開く（開いた後は離すまで閉じない）
+        if openGroup == nil, let slot, let item = store.board.slots[slot], item.kind == .group {
+            openGroup = item
+            groupSlot = slot
+            // グループ階層に入った合図: カチッとした硬めの触覚
+            openHaptic.impactOccurred(intensity: 1.0)
+            openHaptic.prepare()   // 次に備えて触覚の準備をしておく
         }
         if highlighted != slot {
             highlighted = slot
@@ -424,7 +464,7 @@ struct LauncherGridView: View {
     }
 
     private func touchEnded(_ slot: Int?) {
-        defer { touching = false; touchStart = nil; highlighted = nil }
+        defer { session.end(); touchStart = nil; highlighted = nil }
         if let group = openGroup {
             // 指を離したら必ず閉じる。アプリのあるマスの上で離したときだけ起動し、
             // グループ自身のマス、空きマス、格子の外ではホーム階層に戻るだけ。
@@ -433,6 +473,15 @@ struct LauncherGridView: View {
         } else if let slot, slot == touchStart, let item = store.board.slots[slot], item.kind == .action {
             store.launch(item)
         }
+    }
+
+    /// タッチが取り消されたとき（通知センターを引いた、アプリが裏に回ったなど）。何も起動せずに元へ戻す
+    private func touchCancelled() {
+        guard session.isActive else { return }
+        session.end()
+        touchStart = nil
+        highlighted = nil
+        if openGroup != nil { close() }
     }
 
     private func close() {
