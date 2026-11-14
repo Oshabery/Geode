@@ -90,6 +90,7 @@ final class GlowMotion: ObservableObject {
     private var lastPitch: Double = 0
     private var smoothed: (x: Double, y: Double) = (0, 0)
     private var fast: (x: Double, y: Double) = (0, 0)
+    private var frame = 0
 
     private init() {}
 
@@ -146,6 +147,10 @@ final class GlowMotion: ObservableObject {
 
         // 光・反射・影: 120 回/秒で毎回更新する。なめらかさは残しつつ遅れは約 0.02 秒
         smoothed = (smoothed.x * 0.65 + rawX * 0.35, smoothed.y * 0.65 + rawY * 0.35)
+        // 光・反射・影の描き直しは全アイコン分あって重いので、60 回/秒にとどめる
+        // （120 回/秒だとメインスレッドが埋まり、タッチへの反応が遅れるおそれがある。視差は 120 回/秒のまま）
+        frame &+= 1
+        guard frame % 2 == 0 else { return }
         let next = CGSize(width: smoothed.x, height: smoothed.y)
         if abs(next.width - tilt.width) > 0.003 || abs(next.height - tilt.height) > 0.003 {
             tilt = next

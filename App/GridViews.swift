@@ -315,6 +315,8 @@ struct LauncherGridView: View {
     @State private var session = TouchSession()
     /// 指が触れている間 true。タッチがシステムに取り消されたとき（onEnded が呼ばれない）も自動で false に戻る
     @GestureState private var pressing = false
+    /// グループを開いたときの触覚。毎回作ると触覚エンジンの起動待ちで遅れるので、作り置きして準備しておく
+    @State private var openHaptic = UIImpactFeedbackGenerator(style: .rigid)
     @AppStorage("uiStyle") private var uiStyleRaw = UIStyle.standard.rawValue
     @Environment(\.colorScheme) private var currentScheme
     /// グループ階層の中身の配色。背景が暗いので、グローではダークに固定する（標準はこれまでどおり）
@@ -423,6 +425,7 @@ struct LauncherGridView: View {
                 }
             }
         }
+        .onAppear { openHaptic.prepare() }
         .onDisappear { store.groupLayerOpen = false }
         // 指が離れたのに onEnded が来なかった（取り消された）ときは、状態を戻す。
         // 通常の終わりでは onEnded が先に状態を戻すので、ここでは何もしない
@@ -445,7 +448,8 @@ struct LauncherGridView: View {
             openGroup = item
             groupSlot = slot
             // グループ階層に入った合図: カチッとした硬めの触覚
-            UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 1.0)
+            openHaptic.impactOccurred(intensity: 1.0)
+            openHaptic.prepare()   // 次に備えて触覚の準備をしておく
         }
         if highlighted != slot {
             highlighted = slot
