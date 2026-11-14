@@ -85,6 +85,12 @@ targets:
         com.apple.security.application-groups: [group.com.oshabery.geode]
     dependencies:
       - target: GeodeWidget
+    # テストは Geode のスキームから実行する（⌘U / tools/test.sh / CI）
+    scheme:
+      testTargets:
+        - GeodeTests
+        - GeodeUITests
+      gatherCoverageData: true
   GeodeWidget:
     type: app-extension
     platform: iOS
@@ -103,3 +109,28 @@ targets:
       path: Config/Widget.entitlements
       properties:
         com.apple.security.application-groups: [group.com.oshabery.geode]
+  GeodeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests/GeodeTests]
+    dependencies:
+      - target: Geode
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.oshabery.geode.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Geode.app/Geode"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+  GeodeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Tests/GeodeUITests]
+    dependencies:
+      - target: Geode
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.oshabery.geode.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        TEST_TARGET_NAME: Geode

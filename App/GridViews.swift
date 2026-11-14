@@ -186,6 +186,21 @@ struct TileView: View {
     }
 }
 
+/// グループの中身が出てくる順番を決める距離のルール（テストできるよう独立させている）
+enum GroupEntrance {
+    /// これより遠いものは、すべてこの距離として扱う
+    static let maxDistance = 3.0
+
+    /// グループのマスからの距離。上下左右の 1 マスを 1、斜めの 1 マスを 1.5 として数え、3 で頭打ち
+    static func distance(_ slot: Int, from origin: Int, columns: Int) -> Double {
+        let dx = abs(slot % columns - origin % columns)
+        let dy = abs(slot / columns - origin / columns)
+        let diagonal = min(dx, dy)
+        let straight = max(dx, dy) - diagonal
+        return min(Double(diagonal) * 1.5 + Double(straight), maxDistance)
+    }
+}
+
 /// グループの中身のアイコン 1 つ分の出方。表示された瞬間に、ずらした位置・少し小さい・透明な状態から
 /// 遅れて定位置へ動く（親ごと挿入されると子の transition は効かないため、状態で動かす）
 struct GroupChildAppear<Content: View>: View {
@@ -290,22 +305,11 @@ struct LauncherGridView: View {
     /// 中身が出てくるときの、距離 1 あたりの遅れ（秒）と移動量（マスの間隔に対する割合）
     private static let entranceDelayPerUnit = 0.035
     private static let entranceTravelPerUnit: CGFloat = 0.09
-    /// これより遠いものは、すべてこの距離として扱う
-    private static let entranceMaxDistance = 3.0
-
-    /// グループのマスからの距離。上下左右の 1 マスを 1、斜めの 1 マスを 1.5 として数え、3 で頭打ち
-    private func childDistance(_ slot: Int, from origin: Int, columns: Int) -> Double {
-        let dx = abs(slot % columns - origin % columns)
-        let dy = abs(slot / columns - origin / columns)
-        let diagonal = min(dx, dy)
-        let straight = max(dx, dy) - diagonal
-        return min(Double(diagonal) * 1.5 + Double(straight), Self.entranceMaxDistance)
-    }
 
     /// 中身のアイコンの出方: 遅れと、動き出す位置（グループのマスの方向へずらした位置）
     private func childEntrance(_ slot: Int, metrics: GridMetrics) -> (delay: Double, from: CGSize) {
         guard let origin = groupSlot else { return (0, .zero) }
-        let distance = childDistance(slot, from: origin, columns: metrics.layout.columns)
+        let distance = GroupEntrance.distance(slot, from: origin, columns: metrics.layout.columns)
         let a = metrics.center(origin), b = metrics.center(slot)
         let vx = b.x - a.x, vy = b.y - a.y
         let length = max(sqrt(vx * vx + vy * vy), 1)

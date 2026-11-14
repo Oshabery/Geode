@@ -10,51 +10,58 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# ログは公開される。署名の Team ID や秘密情報は使わない（署名なしでシミュレータ向けに実行する）
 jobs:
-  build:
-    name: Build (Simulator, unsigned)
+  unit:
+    name: Build + Unit Test
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-
-      - name: Show available Xcode versions
-        run: ls -d /Applications/Xcode*.app || true
-
       - name: Select the newest Xcode
         run: |
           XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE" ]; then XCODE=/Applications/Xcode.app; fi
-          echo "Using $XCODE"
+          [ -n "$XCODE" ] || XCODE=/Applications/Xcode.app
           sudo xcode-select -s "$XCODE/Contents/Developer"
           xcodebuild -version
-          xcrun simctl list runtimes
-
       - name: Install XcodeGen
         run: brew install xcodegen
-
-      - name: Generate project
-        run: |
-          # 署名の Team ID はリポジトリに含めない。CI では空の設定ファイルを置き、署名なしでビルドする
-          touch Local.xcconfig
-          xcodegen generate
-
-      - name: Build for Simulator
-        run: |
-          set -o pipefail
-          xcodebuild build \
-            -project Geode.xcodeproj \
-            -scheme Geode \
-            -destination 'generic/platform=iOS Simulator' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            | tee build.log | grep -E "error:|warning: .*deprecated|BUILD (SUCCEEDED|FAILED)" || true
-          grep -q "BUILD SUCCEEDED" build.log
-
-      - name: Upload build log
+      - name: Build and run unit tests
+        run: ./tools/test.sh unit
+      - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
-          path: build.log
+          name: unit-results
+          path: |
+            build/unit.log
+            build/unit.xcresult
+          if-no-files-found: ignore
+
+  ui:
+    name: UI Test + Screenshots (non-blocking)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    # 安定するまでは結果を参考扱いにする（失敗しても PR を止めない）
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select the newest Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$XCODE" ] || XCODE=/Applications/Xcode.app
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Run UI tests
+        run: ./tools/test.sh ui
+      - name: Upload results and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-results
+          path: |
+            build/ui.log
+            build/screenshots
           if-no-files-found: ignore
