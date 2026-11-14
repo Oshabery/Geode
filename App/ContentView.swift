@@ -28,6 +28,7 @@ struct ContentView: View {
     @AppStorage("useCustomTint") private var useCustomTint = false
     @AppStorage("tintColor") private var tintColor = Theme.defaultTint
     @AppStorage("uiStyle") private var uiStyle = UIStyle.standard.rawValue
+    @AppStorage("preferBottomTouches") private var preferBottomTouches = false
     @AppStorage("glowLight") private var glowLight = false
     @AppStorage("glowMotion") private var glowMotion = true
     @AppStorage("glowMotionStrength") private var glowMotionStrength = 1.0
@@ -91,6 +92,9 @@ struct ContentView: View {
         }
         .tint(tint)
         .preferredColorScheme(scheme)
+        // 画面下端の近くは、iOS がホームへ戻るスワイプかを見分けるためにタッチを遅らせる。
+        // オンにすると Geode のタッチを優先する（代わりにホームへ戻るには下端を 2 回スワイプする）
+        .defersSystemGestures(on: preferBottomTouches ? .bottom : [])
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.refreshDirectStates() }
             updateGlowMotion()
@@ -134,6 +138,7 @@ struct SettingsView: View {
     @AppStorage("gridColor") private var gridColor = Theme.defaultGrid
     @AppStorage("gridLineOpacity") private var gridLineOpacity = 1.0
     @AppStorage("gridOffsetY") private var gridOffsetY = 0.0
+    @AppStorage("preferBottomTouches") private var preferBottomTouches = false
     @State private var working = false
     @State private var message: String?
 
@@ -248,6 +253,11 @@ struct SettingsView: View {
                     .disabled(!showLabels)
                     Stepper("列: \(store.board.layout.columns)", value: layoutBinding(\.columns), in: 2...5)
                     Stepper("行: \(store.board.layout.rows)", value: layoutBinding(\.rows), in: 3...8)
+                }
+
+                SettingsGroup("操作", id: "touch",
+                              footer: "画面の下端の近くは、iOS がホームへ戻るスワイプかどうかを見分けるために、タッチを少し遅らせます。そのため一番下の行（特に中央）の反応が遅くなります。オンにすると Geode の操作を優先しますが、Geode を表示している間は、ホームへ戻るのに下端を 2 回スワイプする必要があります。") {
+                    Toggle("下端のタッチを優先する", isOn: $preferBottomTouches)
                 }
 
                 if DockBar.enabled {
