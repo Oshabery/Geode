@@ -1,0 +1,69 @@
+import XCTest
+@testable import Geode
+
+final class GridMetricsTests: XCTestCase {
+    private let size = CGSize(width: 390, height: 700)
+    private let layout = GridLayout(columns: 3, rows: 6)
+
+    private func metrics(offsetY: Double = 0, iconScale: Double = 1, labels: Bool = true) -> GridMetrics {
+        GridMetrics(size: size, layout: layout, showLabels: labels, gapX: 12, gapY: 12,
+                    iconScale: iconScale, labelSpacing: 8, outerMargin: 12, offsetY: offsetY)
+    }
+
+    func testEveryCellCenterHitsItsOwnSlot() {
+        let m = metrics()
+        for slot in 0..<layout.capacity {
+            XCTAssertEqual(m.slot(at: m.center(slot)), slot, "slot \(slot)")
+        }
+    }
+
+    func testPointsOutsideTheLatticeHitNothing() {
+        let m = metrics(iconScale: 0.6)
+        XCTAssertNil(m.slot(at: CGPoint(x: 1, y: 1)))
+        XCTAssertNil(m.slot(at: CGPoint(x: size.width - 1, y: size.height - 1)))
+    }
+
+    func testLatticeIsCentredHorizontally() {
+        let m = metrics()
+        let left = m.latticeRect.minX
+        let right = size.width - m.latticeRect.maxX
+        XCTAssertEqual(left, right, accuracy: 0.5)
+    }
+
+    func testVerticalOffsetStaysInsideTheArea() {
+        for offset in [-1000.0, -50, 0, 50, 1000] {
+            let rect = metrics(offsetY: offset, iconScale: 0.6).latticeRect
+            XCTAssertGreaterThanOrEqual(rect.minY, -0.5, "offset \(offset)")
+            XCTAssertLessThanOrEqual(rect.maxY, size.height + 0.5, "offset \(offset)")
+        }
+    }
+
+    func testVerticalOffsetMovesTheGrid() {
+        let centred = metrics(iconScale: 0.6).latticeRect.minY
+        let moved = metrics(offsetY: 20, iconScale: 0.6).latticeRect.minY
+        XCTAssertEqual(moved - centred, 20, accuracy: 0.5)
+    }
+}
+
+final class GroupEntranceTests: XCTestCase {
+    // 3 列のグリッドで、中央（4）からの距離
+    func testOrthogonalNeighbourIsOne() {
+        XCTAssertEqual(GroupEntrance.distance(1, from: 4, columns: 3), 1)
+        XCTAssertEqual(GroupEntrance.distance(3, from: 4, columns: 3), 1)
+    }
+
+    func testDiagonalNeighbourIsOneAndAHalf() {
+        XCTAssertEqual(GroupEntrance.distance(0, from: 4, columns: 3), 1.5)
+        XCTAssertEqual(GroupEntrance.distance(8, from: 4, columns: 3), 1.5)
+    }
+
+    func testMixedStepsAddUp() {
+        // 5 列: 0 から 7 は横に 2・下に 1 → 斜め 1.5 + 横 1 = 2.5
+        XCTAssertEqual(GroupEntrance.distance(7, from: 0, columns: 5), 2.5)
+    }
+
+    func testFarCellsAreCappedAtThree() {
+        XCTAssertEqual(GroupEntrance.distance(24, from: 0, columns: 5), GroupEntrance.maxDistance)
+        XCTAssertEqual(GroupEntrance.distance(3, from: 0, columns: 5), 3)
+    }
+}

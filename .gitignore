@@ -5,3 +5,4 @@ xcuserdata/
 DerivedData/
 Local.xcconfig
 App/InstalledApps.json
+build/

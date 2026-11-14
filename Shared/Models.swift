@@ -67,9 +67,25 @@ enum SharedStorage {
     /// project.yml の App Group と必ず一致させる
     static let appGroup = "group.com.oshabery.geode"
 
-    static var container: URL {
+    /// UI テスト中か（起動引数 -GeodeUITesting）。このときは本来のデータに触れないよう一時フォルダを使う
+    static let isUITesting = ProcessInfo.processInfo.arguments.contains("-GeodeUITesting")
+
+    /// UI テスト用の一時フォルダ。起動ごとに空から始める
+    private static let uiTestingContainer: URL = {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("GeodeUITesting", isDirectory: true)
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    /// 本来の保存先（App Group。使えないときは書類フォルダ）
+    static var appContainer: URL {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)
             ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
+    static var container: URL {
+        isUITesting ? uiTestingContainer : appContainer
     }
     static var boardURL: URL { container.appendingPathComponent("board.json") }
     static var iconsDir: URL {
