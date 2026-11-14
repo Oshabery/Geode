@@ -38,6 +38,13 @@ sys.exit("iPhone のシミュレータが見つかりません")
 DEST="platform=iOS Simulator,id=$DEVICE_ID"
 echo "シミュレータ: $DEVICE_ID"
 
+# 先にシミュレータを起動しきっておく。起動途中に UI テストがアプリを立ち上げると、
+# 「Timed out while launching application」で失敗することがある（CI の起動直後の端末で発生）
+if [ "$MODE" = ui ] || [ "$MODE" = all ]; then
+  xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
+  xcrun simctl bootstatus "$DEVICE_ID" -b > /dev/null
+fi
+
 ACTION=test
 ONLY=()
 case "$MODE" in
