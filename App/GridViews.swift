@@ -438,12 +438,14 @@ struct LauncherGridView: View {
         // 前のタッチの終わりを受け取れなかった場合でも、置いた位置が変われば新しいタッチとして扱う
         if session.begin(at: start) {
             touchStart = slot
-            if openGroup == nil, let slot, let item = store.board.slots[slot], item.kind == .group {
-                openGroup = item
-                groupSlot = slot
-                // グループ階層に入った合図: カチッとした硬めの触覚
-                UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 1.0)
-            }
+        }
+        // 指が触れている間は、グループの上にある限りレイヤーを開く。
+        // 置いた瞬間に少しずれていても、指がグループの上に来た時点で開く（開いた後は離すまで閉じない）
+        if openGroup == nil, let slot, let item = store.board.slots[slot], item.kind == .group {
+            openGroup = item
+            groupSlot = slot
+            // グループ階層に入った合図: カチッとした硬めの触覚
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 1.0)
         }
         if highlighted != slot {
             highlighted = slot
