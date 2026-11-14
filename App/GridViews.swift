@@ -190,6 +190,62 @@ struct TileView: View {
     }
 }
 
+/// グリッドのタッチを UIKit で直接受け取る透明なビュー。
+/// 指を置いた瞬間（touchesBegan）に通知するので、動かさなくてもすぐ反応する。取り消し（touchesCancelled）も届く
+struct TouchSurface: UIViewRepresentable {
+    var began: (CGPoint) -> Void
+    var moved: (_ point: CGPoint, _ start: CGPoint) -> Void
+    var ended: (CGPoint) -> Void
+    var cancelled: () -> Void
+
+    func makeUIView(context: Context) -> TouchView {
+        let view = TouchView()
+        view.backgroundColor = .clear
+        view.isMultipleTouchEnabled = false
+        return view
+    }
+
+    func updateUIView(_ view: TouchView, context: Context) {
+        view.began = began
+        view.moved = moved
+        view.ended = ended
+        view.cancelled = cancelled
+    }
+
+    final class TouchView: UIView {
+        var began: ((CGPoint) -> Void)?
+        var moved: ((CGPoint, CGPoint) -> Void)?
+        var ended: ((CGPoint) -> Void)?
+        var cancelled: (() -> Void)?
+        private weak var tracked: UITouch?
+        private var start: CGPoint = .zero
+
+        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+            guard tracked == nil, let touch = touches.first else { return }
+            tracked = touch
+            start = touch.location(in: self)
+            began?(start)
+        }
+
+        override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+            guard let touch = tracked, touches.contains(touch) else { return }
+            moved?(touch.location(in: self), start)
+        }
+
+        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+            guard let touch = tracked, touches.contains(touch) else { return }
+            tracked = nil
+            ended?(touch.location(in: self))
+        }
+
+        override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+            guard let touch = tracked, touches.contains(touch) else { return }
+            tracked = nil
+            cancelled?()
+        }
+    }
+}
+
 /// 1 回のタッチの始まりと終わり。
 /// 以前は「触れている」フラグだけで判断していたため、タッチが取り消されて終わりの通知が来ないと
 /// フラグが立ったままになり、次にグループを長押ししても開かないことがあった
@@ -317,8 +373,6 @@ struct LauncherGridView: View {
     @State private var touchStart: Int?
     /// いまのタッチ。新しいタッチの始まりを、指を置いた位置で見分ける
     @State private var session = TouchSession()
-    /// 指が触れている間 true。タッチがシステムに取り消されたとき（onEnded が呼ばれない）も自動で false に戻る
-    @GestureState private var pressing = false
     /// グループを開いたときの触覚。毎回作ると触覚エンジンの起動待ちで遅れるので、作り置きして準備しておく
     @State private var openHaptic = UIImpactFeedbackGenerator(style: .rigid)
     @AppStorage("uiStyle") private var uiStyleRaw = UIStyle.standard.rawValue
@@ -408,13 +462,16 @@ struct LauncherGridView: View {
                     .zIndex(3)
                 }
             }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .updating($pressing) { _, state, _ in state = true }
-                    .onChanged { touchMoved(metrics.slot(at: $0.location), startedAt: $0.startLocation) }
-                    .onEnded { touchEnded(metrics.slot(at: $0.location)) }
-            )
+            // タッチは UIKit で直接受け取る。SwiftUI のジェスチャーを通すと、指を置いたまま動かさないときに
+            // 最初の通知が遅れることがあり、グループが開くまで時間がかかっていた
+            .overlay {
+                TouchSurface(
+                    began: { point in touchMoved(metrics.slot(at: point), startedAt: point) },
+                    moved: { point, start in touchMoved(metrics.slot(at: point), startedAt: start) },
+                    ended: { point in touchEnded(metrics.slot(at: point)) },
+                    cancelled: { touchCancelled() }
+                )
+            }
             .animation(openGroup != nil ? Self.openAnimation : Self.closeAnimation, value: openGroup?.id)
             .animation(.easeOut(duration: 0.1), value: highlighted)
         }
@@ -431,12 +488,6 @@ struct LauncherGridView: View {
         }
         .onAppear { openHaptic.prepare() }
         .onDisappear { store.groupLayerOpen = false }
-        // 指が離れたのに onEnded が来なかった（取り消された）ときは、状態を戻す。
-        // 通常の終わりでは onEnded が先に状態を戻すので、ここでは何もしない
-        .onChange(of: pressing) { _, isPressing in
-            guard !isPressing else { return }
-            DispatchQueue.main.async { touchCancelled() }
-        }
         .onAppear(perform: openRequestedGroup)
         .onChange(of: store.requestedGroup) { _, _ in openRequestedGroup() }
     }
