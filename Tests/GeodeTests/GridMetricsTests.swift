@@ -67,3 +67,32 @@ final class GroupEntranceTests: XCTestCase {
         XCTAssertEqual(GroupEntrance.distance(3, from: 0, columns: 5), 3)
     }
 }
+
+/// グループを長押ししても開かないことがある不具合の再発防止
+final class TouchSessionTests: XCTestCase {
+    func testFirstEventStartsATouch() {
+        var session = TouchSession()
+        XCTAssertTrue(session.begin(at: CGPoint(x: 10, y: 10)))
+        XCTAssertTrue(session.isActive)
+    }
+
+    func testLaterEventsOfTheSameTouchAreNotNew() {
+        var session = TouchSession()
+        _ = session.begin(at: CGPoint(x: 10, y: 10))
+        XCTAssertFalse(session.begin(at: CGPoint(x: 10, y: 10)))
+    }
+
+    func testNextTouchIsNewAfterANormalEnd() {
+        var session = TouchSession()
+        _ = session.begin(at: CGPoint(x: 10, y: 10))
+        session.end()
+        XCTAssertTrue(session.begin(at: CGPoint(x: 10, y: 10)))
+    }
+
+    /// 終わりの通知が来なかった（取り消された）あとでも、次のタッチは新しいタッチになる
+    func testNextTouchIsNewEvenIfTheEndWasMissed() {
+        var session = TouchSession()
+        _ = session.begin(at: CGPoint(x: 10, y: 10))
+        XCTAssertTrue(session.begin(at: CGPoint(x: 200, y: 300)))
+    }
+}
