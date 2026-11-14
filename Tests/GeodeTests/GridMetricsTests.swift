@@ -23,6 +23,15 @@ final class GridMetricsTests: XCTestCase {
         XCTAssertNil(m.slot(at: CGPoint(x: size.width - 1, y: size.height - 1)))
     }
 
+    /// 外周のアイコンは、格子の少し外側を押しても当たる（場所によって反応が違う問題の再発防止）
+    func testTouchesJustOutsideTheEdgeHitTheNearestCell() {
+        let m = metrics(iconScale: 0.6)
+        let rect = m.latticeRect
+        XCTAssertEqual(m.slot(at: CGPoint(x: rect.minX - 10, y: rect.minY + 5)), 0)
+        XCTAssertEqual(m.slot(at: CGPoint(x: rect.maxX + 10, y: rect.maxY + 10)), layout.capacity - 1)
+        XCTAssertNil(m.slot(at: CGPoint(x: rect.minX - GridMetrics.edgeHitSlop - 5, y: rect.midY)))
+    }
+
     func testLatticeIsCentredHorizontally() {
         let m = metrics()
         let left = m.latticeRect.minX

@@ -65,10 +65,14 @@ struct GridMetrics {
                        y: marginY + r * (cellSize.height + gapY) + cellSize.height / 2)
     }
 
-    /// 座標 → スロット番号。格子の外（何も無い余白）は nil
+    /// 格子の外側でも、この距離までは一番近いマスに当たったとみなす (pt)。
+    /// 外周のアイコンは、外側に間隔の半分しか当たり判定が無く、指が少しずれると反応しなかったため
+    static let edgeHitSlop: CGFloat = 16
+
+    /// 座標 → スロット番号。格子の外（何も無い余白）は nil。ただし外周から edgeHitSlop までは近いマスに当てる
     func slot(at p: CGPoint) -> Int? {
         let rect = latticeRect
-        guard rect.contains(p) else { return nil }
+        guard rect.insetBy(dx: -Self.edgeHitSlop, dy: -Self.edgeHitSlop).contains(p) else { return nil }
         let c = Int(((p.x - rect.minX) / (tile + gapX)).rounded(.down))
         let r = Int(((p.y - rect.minY) / (cellSize.height + gapY)).rounded(.down))
         return min(max(r, 0), layout.rows - 1) * layout.columns + min(max(c, 0), layout.columns - 1)
