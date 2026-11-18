@@ -105,6 +105,20 @@ struct GridCells<Cell: View>: View {
     }
 }
 
+/// 通知バッジ（ホーム画面のバッジと同じ赤い点）。背景から浮くように、背景色の細い縁を付ける
+struct BadgeDot: View {
+    let size: CGFloat
+
+    var body: some View {
+        Circle()
+            .fill(Color(uiColor: .systemRed))
+            .frame(width: size, height: size)
+            .overlay(Circle().strokeBorder(Color(uiColor: .systemBackground), lineWidth: max(1.5, size * 0.12)))
+            .accessibilityLabel("通知バッジ")
+            .allowsHitTesting(false)
+    }
+}
+
 /// アイコンとアイコンの間（余白の中央）に引く区切り線
 struct GridLines: View {
     let metrics: GridMetrics
@@ -167,6 +181,12 @@ struct TileView: View {
                     }
                 }
                 .overlay(iconShape(metrics.tile).fill(Color.white.opacity(highlighted ? 0.3 : 0)))
+                .overlay(alignment: .topTrailing) {
+                    if item.showBadge == true {
+                        BadgeDot(size: max(10, metrics.tile * 0.2))
+                            .offset(x: metrics.tile * 0.06, y: -metrics.tile * 0.06)
+                    }
+                }
                 .scaleEffect(highlighted ? 1.06 : 1)
                 if metrics.labelHeight > 0 {
                     if isGlow {

@@ -46,12 +46,14 @@ final class BoardCompatibilityTests: XCTestCase {
         XCTAssertNil(board.slots[0]?.baseColor)
         XCTAssertNil(board.slots[0]?.isToggle)
         XCTAssertNil(board.slots[0]?.toggleStartsOn)
+        XCTAssertNil(board.slots[0]?.showBadge)
     }
 
     func testCurrentBoardRoundTrips() throws {
         var item = LaunchItem(kind: .action, name: "ライト", urlString: "geode://torch", symbol: "flashlight.on.fill")
         item.baseColor = "210,80,95"
         item.isToggle = true
+        item.showBadge = true
         var board = Board()
         board.slots[3] = item
         board.dock = [1: LaunchItem(kind: .action, name: "Safari", urlString: "https://example.com")]
