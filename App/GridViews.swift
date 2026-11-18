@@ -105,30 +105,27 @@ struct GridCells<Cell: View>: View {
     }
 }
 
-/// 通知バッジ: アイコンの周りを囲む赤いガラスの縁。
-/// 縁の外側には、ぼかしの代わりに少しずつ薄くなる線を重ねて、赤い光がにじんで見えるようにする（グリッドを重くしないため）
+/// 通知バッジ: アイコンの周りを囲む、薄く透き通った赤いガラスの縁。
+/// 周りへの発光はほとんど付けない（縁のすぐ外にごく薄い赤を 1 本だけ）
 struct BadgeRing: View {
     let size: CGFloat
 
     var body: some View {
-        let width = max(2, size * 0.055)
+        let width = max(1, size * 0.028)
         let red = Color(uiColor: .systemRed)
         let ring = iconShape(size + width * 2)
         ZStack {
-            // 外へにじむ赤い光
-            ForEach(0..<4, id: \.self) { step in
-                let spread = width * CGFloat(step + 1) * 0.9
-                iconShape(size + width * 2 + spread * 2)
-                    .stroke(red.opacity(0.22 - Double(step) * 0.05), lineWidth: spread)
-            }
-            // ガラスの縁: 上が明るく下が濃い赤
-            ring.strokeBorder(LinearGradient(colors: [Color(red: 1, green: 0.55, blue: 0.55), red, Color(red: 0.6, green: 0, blue: 0.05)],
+            // 縁のすぐ外のごく薄い赤（発光というより、縁の輪郭をやわらげる程度）
+            iconShape(size + width * 3)
+                .stroke(red.opacity(0.08), lineWidth: width)
+            // 透明感のある赤い縁: 全体を半透明にし、上は白っぽく、下は少しだけ赤を濃く
+            ring.strokeBorder(LinearGradient(colors: [red.opacity(0.25), red.opacity(0.45), red.opacity(0.6)],
                                              startPoint: .top, endPoint: .bottom),
                               lineWidth: width)
-            // 縁の上側の映り込み
-            ring.strokeBorder(LinearGradient(colors: [.white.opacity(0.85), .white.opacity(0)],
+            // ガラスの映り込み: 上側に細い白
+            ring.strokeBorder(LinearGradient(colors: [.white.opacity(0.6), .white.opacity(0)],
                                              startPoint: .top, endPoint: .center),
-                              lineWidth: max(1, width * 0.35))
+                              lineWidth: max(0.5, width * 0.4))
         }
         .frame(width: size + width * 2, height: size + width * 2)
         .accessibilityLabel("通知バッジ")
