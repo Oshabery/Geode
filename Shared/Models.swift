@@ -51,6 +51,27 @@ struct Board: Codable {
         return nil
     }
 
+    /// 通知バッジを外す（グリッド・グループの中・ドックのどこにあっても）。外したら true
+    @discardableResult
+    mutating func clearBadge(_ id: UUID) -> Bool {
+        for key in slots.keys {
+            if slots[key]?.id == id, slots[key]?.showBadge != nil {
+                slots[key]?.showBadge = nil
+                return true
+            }
+            if let childKey = slots[key]?.children.first(where: { $0.value.id == id })?.key,
+               slots[key]?.children[childKey]?.showBadge != nil {
+                slots[key]?.children[childKey]?.showBadge = nil
+                return true
+            }
+        }
+        if let key = dock?.first(where: { $0.value.id == id })?.key, dock?[key]?.showBadge != nil {
+            dock?[key]?.showBadge = nil
+            return true
+        }
+        return false
+    }
+
     var groups: [LaunchItem] {
         slots.sorted { $0.key < $1.key }.map(\.value).filter { $0.kind == .group }
     }

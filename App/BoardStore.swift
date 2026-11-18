@@ -105,6 +105,11 @@ final class BoardStore: ObservableObject {
             errorMessage = "「\(item.name)」の URL が正しくありません。"
             return
         }
+        // 開いた時点で確認したとみなして、通知バッジを外す
+        if item.showBadge == true {
+            var updated = board
+            if updated.clearBadge(item.id) { board = updated }
+        }
         // オン / オフのスイッチは押した瞬間にカチッとした触覚を返す
         let isSwitch = SystemActions.isSwitch(item)
         if isSwitch {
