@@ -105,17 +105,34 @@ struct GridCells<Cell: View>: View {
     }
 }
 
-/// 通知バッジ（ホーム画面のバッジと同じ赤い点）。背景から浮くように、背景色の細い縁を付ける
-struct BadgeDot: View {
+/// 通知バッジ: アイコンの周りを囲む赤いガラスの縁。
+/// 縁の外側には、ぼかしの代わりに少しずつ薄くなる線を重ねて、赤い光がにじんで見えるようにする（グリッドを重くしないため）
+struct BadgeRing: View {
     let size: CGFloat
 
     var body: some View {
-        Circle()
-            .fill(Color(uiColor: .systemRed))
-            .frame(width: size, height: size)
-            .overlay(Circle().strokeBorder(Color(uiColor: .systemBackground), lineWidth: max(1.5, size * 0.12)))
-            .accessibilityLabel("通知バッジ")
-            .allowsHitTesting(false)
+        let width = max(2, size * 0.055)
+        let red = Color(uiColor: .systemRed)
+        let ring = iconShape(size + width * 2)
+        ZStack {
+            // 外へにじむ赤い光
+            ForEach(0..<4, id: \.self) { step in
+                let spread = width * CGFloat(step + 1) * 0.9
+                iconShape(size + width * 2 + spread * 2)
+                    .stroke(red.opacity(0.22 - Double(step) * 0.05), lineWidth: spread)
+            }
+            // ガラスの縁: 上が明るく下が濃い赤
+            ring.strokeBorder(LinearGradient(colors: [Color(red: 1, green: 0.55, blue: 0.55), red, Color(red: 0.6, green: 0, blue: 0.05)],
+                                             startPoint: .top, endPoint: .bottom),
+                              lineWidth: width)
+            // 縁の上側の映り込み
+            ring.strokeBorder(LinearGradient(colors: [.white.opacity(0.85), .white.opacity(0)],
+                                             startPoint: .top, endPoint: .center),
+                              lineWidth: max(1, width * 0.35))
+        }
+        .frame(width: size + width * 2, height: size + width * 2)
+        .accessibilityLabel("通知バッジ")
+        .allowsHitTesting(false)
     }
 }
 
@@ -181,10 +198,9 @@ struct TileView: View {
                     }
                 }
                 .overlay(iconShape(metrics.tile).fill(Color.white.opacity(highlighted ? 0.3 : 0)))
-                .overlay(alignment: .topTrailing) {
+                .overlay {
                     if item.showBadge == true {
-                        BadgeDot(size: max(10, metrics.tile * 0.2))
-                            .offset(x: metrics.tile * 0.06, y: -metrics.tile * 0.06)
+                        BadgeRing(size: metrics.tile)
                     }
                 }
                 .scaleEffect(highlighted ? 1.06 : 1)
