@@ -47,6 +47,9 @@ struct ItemEditor: View {
             Form {
                 Section {
                     TextField(item.kind == .group ? "グループ名" : "アクション名", text: $item.name)
+                    Toggle("通知バッジ（赤い点）を表示", isOn: Binding(
+                        get: { item.showBadge == true },
+                        set: { item.showBadge = $0 ? true : nil }))
                     if item.kind == .action {
                         TextField("url://", text: $item.urlString)
                             .keyboardType(.URL)

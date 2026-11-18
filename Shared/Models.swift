@@ -21,6 +21,9 @@ struct LaunchItem: Codable, Identifiable, Hashable {
     var isToggle: Bool? = nil
     /// スイッチの状態がまだ記録されていないときの初期値（Wi-Fi など普段オンのもの用）
     var toggleStartsOn: Bool? = nil
+    /// 通知バッジ（赤い点）を表示するか。未読などの目印として利用者が自分で付け外しする
+    /// （iOS ではほかのアプリの未読を読み取れないため、自動では付かない）
+    var showBadge: Bool? = nil
 }
 
 struct GridLayout: Codable, Hashable {
