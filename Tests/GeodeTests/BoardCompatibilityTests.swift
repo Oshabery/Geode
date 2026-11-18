@@ -64,6 +64,32 @@ final class BoardCompatibilityTests: XCTestCase {
         XCTAssertEqual(decoded.dock?[1]?.name, "Safari")
     }
 
+    /// 通知バッジは、グリッド・グループの中・ドックのどこにあっても外せる
+    func testClearBadgeFindsItemsEverywhere() {
+        var top = LaunchItem(kind: .action, name: "top")
+        top.showBadge = true
+        var child = LaunchItem(kind: .action, name: "child")
+        child.showBadge = true
+        var group = LaunchItem(kind: .group, name: "G")
+        group.children[2] = child
+        var docked = LaunchItem(kind: .action, name: "dock")
+        docked.showBadge = true
+        var board = Board()
+        board.slots[0] = top
+        board.slots[1] = group
+        board.dock = [0: docked]
+
+        XCTAssertTrue(board.clearBadge(top.id))
+        XCTAssertTrue(board.clearBadge(child.id))
+        XCTAssertTrue(board.clearBadge(docked.id))
+        XCTAssertNil(board.slots[0]?.showBadge)
+        XCTAssertNil(board.slots[1]?.children[2]?.showBadge)
+        XCTAssertNil(board.dock?[0]?.showBadge)
+        // 付いていないものは何もしない
+        XCTAssertFalse(board.clearBadge(top.id))
+        XCTAssertFalse(board.clearBadge(UUID()))
+    }
+
     func testReferencedIconFilesIncludeChildrenAndDock() {
         var group = LaunchItem(kind: .group, name: "G")
         group.children[0] = LaunchItem(kind: .action, name: "c", iconFile: "child.png")
