@@ -77,5 +77,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 
 - 設定画面の各まとまりは `SettingsGroup`（折りたたみ、開閉状態は `settingsOpen.<id>` に保存、最初は閉じている）で作る
 
-- 変更は `main` に直接コミットしてプッシュしている（プルリクエストは使っていない）
+- 変更はブランチを切ってプルリクエストにする（`main` に直接プッシュしない）
+- **マージは Claude が行ってよい**（ユーザーの指定）。条件: CI の Build + Unit Test が成功していること。UI Test（参考扱い）が失敗した場合は、原因がその PR の変更でないことを確かめ（再実行は 1 回まで）、PR にコメントしてからマージする。マージ後は `main` の CI も確認する
+- 次の変更は自動でマージせず、内容を説明してユーザーの承認を得る: 署名・証明書・プロビジョニング、Bundle ID、Entitlements・Capabilities、App Store / TestFlight への提出や配信、課金、保存データを消す・作り直す変更
 - ユーザーは設定で調整できることを好む。見た目の値を決め打ちにする前に、設定項目にするか検討する
