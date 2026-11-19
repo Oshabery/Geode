@@ -3,7 +3,8 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    # 作業ブランチ（claude/…）への push でもビルドとテストを確認する
+    branches: [main, 'claude/**']
   workflow_dispatch:
 
 concurrency:
