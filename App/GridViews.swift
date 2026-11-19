@@ -108,6 +108,10 @@ struct GridCells<Cell: View>: View {
 /// 通知バッジ: アイコンの周りを囲む、薄く透き通った赤いガラスの縁。
 /// 周りへの発光はほとんど付けない（縁のすぐ外にごく薄い赤を 1 本だけ）
 struct BadgeRing: View {
+    /// 通知バッジを使うか。ユーザーの指定で外している（true に戻せば元どおり。
+    /// 各アクションの showBadge は保存データに残してあり、起動時に外す処理もそのまま）
+    static let enabled = false
+
     let size: CGFloat
 
     var body: some View {
@@ -196,7 +200,7 @@ struct TileView: View {
                 }
                 .overlay(iconShape(metrics.tile).fill(Color.white.opacity(highlighted ? 0.3 : 0)))
                 .overlay {
-                    if item.showBadge == true {
+                    if BadgeRing.enabled && item.showBadge == true {
                         BadgeRing(size: metrics.tile)
                     }
                 }
