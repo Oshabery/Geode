@@ -47,7 +47,7 @@ struct ItemEditor: View {
             Form {
                 Section {
                     TextField(item.kind == .group ? "グループ名" : "アクション名", text: $item.name)
-                    if BadgeRing.enabled {
+                    if Features.badge {
                         Toggle("通知バッジ（赤いガラスの縁）を表示", isOn: Binding(
                             get: { item.showBadge == true },
                             set: { item.showBadge = $0 ? true : nil }))

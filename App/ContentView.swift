@@ -79,7 +79,7 @@ struct ContentView: View {
                     .zIndex(store.groupLayerOpen ? 1 : 0)
             }
 
-            if DockBar.enabled {
+            if Features.dock {
                 DockBar(editing: editing)
             }
         }
@@ -260,7 +260,7 @@ struct SettingsView: View {
                     Toggle("下端のタッチを優先する", isOn: $preferBottomTouches)
                 }
 
-                if DockBar.enabled {
+                if Features.dock {
                     SettingsGroup("下部の 3 つのボタン", id: "dock",
                                   footer: "中央のボタンを基準に、左右のボタンをどれだけ離すかを決めます。画面の幅を超える値にしても、端で止まります。") {
                         VStack(alignment: .leading) {

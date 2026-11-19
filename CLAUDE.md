@@ -60,8 +60,8 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 - **画面下端**: iOS は下端付近のタッチをホームへのスワイプか見分けるために遅らせる。設定「下端のタッチを優先する」（`preferBottomTouches`、既定オフ）で `.defersSystemGestures(on: .bottom)` を有効にできる（代わりにホームへ戻るのは 2 回スワイプ）
 - **当たり判定**: `GridMetrics.slot(at:)` は格子の外で nil を返す（格子の外周から `edgeHitSlop` = 24pt までは一番近いマスに当てる。外周のアイコンだけ反応しにくかったため）。それより外でのタップや指を離す操作では何も起動しない
 - **グリッド線**: 各アイコンを同じ大きさのボックス（アイコン + 間隔の半分ずつ）で区切る。一番外側の枠線は引かない（ユーザーの指定）。濃さは `gridLineOpacity`（0.05...1、1 が既定）を色指定あり・なしの両方に掛ける。アプリ名を表示しているときは「アイコン + 名前」のまとまりがボックスの中央に来る
-- **ドック**: ユーザーの指定で一旦外している（`DockBar.enabled = false`。画面にも設定にも出さないが、コードと `Board.dock` のデータは残してあり、true に戻せば元どおり）。画面下部の 3 つのボタン（`App/DockBar.swift`）。`Board.dock`（Optional）に保存し、アクションのみ置ける。未割り当てのボタンは通常モードでは表示せず（位置は空けておく）、編集モードでだけ灰色の「＋」を出す（ユーザーの指定）。編集モードの操作はグリッドとそろえる（× で削除、タップで編集、ドラッグで入れ替え）。盤面全体をたどる処理は `Board.topLevelItems` を使い、ドックを漏らさない（`cleanUpIcons` がアイコン画像を消してしまうため）
-- **通知バッジ**: ユーザーの指定で外している（`BadgeRing.enabled = false`。画面にも編集画面にも出さないが、コードと `showBadge` のデータは残してあり、true に戻せば元どおり）。`LaunchItem.showBadge`（Optional）。アクション / グループの編集画面で付け外しする、アイコンを囲む、薄く透き通った赤いガラスの細い縁（`BadgeRing`。赤い点はユーザーの指定でやめた。濃い赤・太い縁・周りの発光は避ける）。そのアクションを Geode から起動すると自動で外れる（`Board.clearBadge`、`BoardStore.launch`）。iOS はほかのアプリの未読や通知を読み取れないので自動では付かない（ユーザーには説明済み）
+- **ドック**: ユーザーの指定で一旦外している（`Features.dock = false`、`App/GeodeApp.swift`。画面にも設定にも出さないが、コードと `Board.dock` のデータは残してあり、true に戻せば元どおり）。画面下部の 3 つのボタン（`App/DockBar.swift`）。`Board.dock`（Optional）に保存し、アクションのみ置ける。未割り当てのボタンは通常モードでは表示せず（位置は空けておく）、編集モードでだけ灰色の「＋」を出す（ユーザーの指定）。編集モードの操作はグリッドとそろえる（× で削除、タップで編集、ドラッグで入れ替え）。盤面全体をたどる処理は `Board.topLevelItems` を使い、ドックを漏らさない（`cleanUpIcons` がアイコン画像を消してしまうため）
+- **通知バッジ**: ユーザーの指定で外している（`Features.badge = false`）。オフの間は、画面にも編集画面にも出さず、起動時にバッジを外す処理も動かさない（保存済みの `showBadge` はそのまま残るので、true に戻せば元どおり）。オンのときの仕様: `LaunchItem.showBadge`（Optional）を編集画面で付け外しし、アイコンを薄く透き通った赤いガラスの細い縁（`BadgeRing`）で囲む。Geode から起動すると外れる（`Board.clearBadge`）。iOS はほかのアプリの未読を読み取れないので自動では付かない
 - **ベース色**: `LaunchItem.baseColor`（HSB 文字列、Optional）。画像の無いシンボルアイコンの下地に使う。`HSBColor` はウィジェットからも使うので `Shared/HSBColor.swift` に置く
 - **グループ**: 指で触れている間だけ階層を表示する。指がグループの上に来た時点で開き（置いた位置が少しずれていても、滑らせて乗せても開く）、離すかタッチが取り消されるまで開いたまま。タッチは SwiftUI のジェスチャーではなく `TouchSurface`（UIKit の touchesBegan/Moved/Ended/Cancelled）で直接受け取る。SwiftUI の DragGesture では、指を置いたまま動かさないと開くまで数秒かかることがあったため。タッチの始まりは `TouchSession` でも判断する。アプリのあるマスで離すと起動、グループ自身のマスや空きマスで離すとホームに戻る。階層に入るとき `.rigid` の触覚を返す。階層の背景（`GroupBackdrop`）は画面全体を覆い（グリッドの枠で切ると四角い境界が見えるため）、押しているグループの周りだけ薄くする。開いている間は `store.groupLayerOpen` で `LauncherGridView` を最前面にし、背景は触っても反応しない。中身のアイコンはグループのマスから外へ、近いものから順に出る（`GroupChildAppear`）。距離は上下左右 1 マスを 1、斜め 1 マスを 1.5 として数え、3 で頭打ち。隣のマス（距離 1）は遅れなしで、それより遠いものは距離 1 増えるごとに 0.035 秒遅れる。移動量はマスの間隔の 9% × 距離（`entranceDelayPerUnit` / `entranceTravelPerUnit`）。大きく動かすと定位置に着くまで遅く見えるため、移動距離は小さく保つ（押しているグループ自身は別の層で薄く出すだけ）。入るときの動きは、出だしが速く終わりに余韻が残るカーブ（`LauncherGridView.openAnimation`、0.3 秒）。出だしを遅くしないこと（ユーザーがもたつきを嫌う）。戻るときは短く（0.22 秒）
 - **保存**: 盤面は App Group の `board.json`。`Board` / `LaunchItem` に必須のフィールドを足すと既存データが読めなくなるので、足すならオプショナルにするか、設定は `@AppStorage` に置く（外観・色・サイズなどの設定はすべて `@AppStorage`）
@@ -88,7 +88,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 - マージはユーザーが GitHub で「Create a merge commit」で行う。Squash・Rebase は使わない（Mac 側の pull がつながらなくなるため）。**Claude は PR をマージしない**
 - ビルドやテストが通っていない状態のときは、PR のリンクを渡す前にそのことを先に伝える
 - マージされたら、作業ブランチを同じ名前のまま最新の `main` から作り直して作業を続ける（Mac はブランチを切り替えずに pull を続けられる）
-- CI は作業ブランチ（`claude/**`）への push でも動く。push のあとは CI の結果を確認し、失敗していればユーザーに伝える
+- CI は作業ブランチ（`claude/**`）への push でも動く（`claude/` からの PR では二重に動かさない）。push のあとは CI の結果を確認し、失敗していればユーザーに伝える
 
 ## 作業の進め方
 
