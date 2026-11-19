@@ -5,6 +5,10 @@ import SwiftUI
 /// - 通常モード: 割り当て済みはタップで起動。未割り当ては表示しない（位置は空けておく）
 /// - 編集モード: 未割り当ては灰色の「＋」、割り当て済みはタップで編集、× で削除、ドラッグで入れ替え
 struct DockBar: View {
+    /// 下部の 3 つのボタンを使うか。ユーザーの指定で一旦外している（true に戻せば元どおり。
+    /// 割り当て済みのアクションは Board.dock に残してあり、アイコン画像も消さない）
+    static let enabled = false
+
     @EnvironmentObject private var store: BoardStore
     let editing: Bool
     @AppStorage("dockSpacing") private var dockSpacing = GridDefaults.dockSpacing
