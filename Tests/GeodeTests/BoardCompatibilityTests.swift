@@ -102,3 +102,85 @@ final class BoardCompatibilityTests: XCTestCase {
         XCTAssertEqual(board.referencedIconFiles, ["child.png", "top.png", "dock.png"])
     }
 }
+
+/// iPad の縦画面と横画面で別の配置を持つ仕組み
+final class LandscapeArrangementTests: XCTestCase {
+    private func item(_ name: String, icon: String? = nil) -> LaunchItem {
+        LaunchItem(kind: .action, name: name, iconFile: icon)
+    }
+
+    /// 横の配置が無いときは、縦の行と列を入れ替えた配置になる（3×6 → 6×3）
+    func testLandscapeIsDerivedByTransposingUntilEdited() {
+        var board = Board()          // 3 列 × 6 行
+        board.slots[1] = item("a")   // 縦: 0 行目 1 列目
+        board.slots[5] = item("b")   // 縦: 1 行目 2 列目
+
+        let layout = board.layout(for: .landscape)
+        let slots = board.slots(for: .landscape)
+
+        XCTAssertEqual(layout, GridLayout(columns: 6, rows: 3))
+        XCTAssertEqual(slots[6]?.name, "a")    // 横: 1 行目 0 列目
+        XCTAssertEqual(slots[13]?.name, "b")   // 横: 2 行目 1 列目
+        XCTAssertNil(board.landscapeSlots)     // 読むだけでは保存しない
+    }
+
+    /// グループの中身も同じように入れ替わり、グループ自身のマスと重ならない
+    func testGroupContentsAreTransposedToo() {
+        var group = LaunchItem(kind: .group, name: "G")
+        group.children[2] = item("child")      // 縦: 0 行目 2 列目
+        var board = Board()
+        board.slots[0] = group
+
+        let landscapeGroup = board.slots(for: .landscape)[0]
+        XCTAssertEqual(landscapeGroup?.children[12]?.name, "child")  // 横: 2 行目 0 列目
+        XCTAssertNil(landscapeGroup?.children[0])
+    }
+
+    /// 入れ替えると設定できる範囲を外れる配置（2×10、8×10）では、縦の配置をそのまま使う
+    func testDerivedLayoutStaysWithinTheAllowedRange() {
+        for portrait in [GridLayout(columns: 2, rows: 10), GridLayout(columns: 8, rows: 10),
+                         GridLayout(columns: 3, rows: 6), GridLayout(columns: 5, rows: 8)] {
+            var board = Board()
+            board.layout = portrait
+            let landscape = board.layout(for: .landscape)
+            XCTAssertTrue(Board.padColumns.contains(landscape.columns), "\(portrait)")
+            XCTAssertTrue(Board.padRows.contains(landscape.rows), "\(portrait)")
+            XCTAssertEqual(landscape.capacity, portrait.capacity)
+        }
+    }
+
+    /// 横画面で編集しても、縦画面の配置は変わらない
+    func testEditingLandscapeLeavesPortraitUntouched() {
+        var board = Board()
+        board.slots[0] = item("portrait")
+        var landscape = board.slots(for: .landscape)
+        landscape[0] = nil
+        landscape[3] = item("landscape-only", icon: "l.png")
+
+        board.setSlots(landscape, for: .landscape)
+
+        XCTAssertEqual(board.slots[0]?.name, "portrait")
+        XCTAssertNil(board.slots[3])
+        XCTAssertEqual(board.landscapeLayout, GridLayout(columns: 6, rows: 3))
+        XCTAssertEqual(board.slots(for: .landscape)[3]?.name, "landscape-only")
+    }
+
+    /// 横画面にだけ置いたアイテムも、アイコン画像の掃除と ID 検索の対象になる
+    func testLandscapeOnlyItemsAreFoundAndKeepTheirIcons() {
+        var board = Board()
+        let only = item("landscape-only", icon: "l.png")
+        board.setSlots([4: only], for: .landscape)
+
+        XCTAssertTrue(board.referencedIconFiles.contains("l.png"))
+        XCTAssertEqual(board.find(only.id)?.name, "landscape-only")
+    }
+
+    /// 以前のアプリで保存した盤面には横の配置が無く、縦から作った配置で表示される
+    func testOldBoardsHaveNoStoredLandscape() throws {
+        var board = Board()
+        board.slots[0] = item("a")
+        let decoded = try JSONDecoder().decode(Board.self, from: JSONEncoder().encode(board))
+        XCTAssertNil(decoded.landscapeLayout)
+        XCTAssertNil(decoded.landscapeSlots)
+    }
+}

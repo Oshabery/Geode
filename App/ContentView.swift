@@ -34,6 +34,20 @@ struct ContentView: View {
     @AppStorage("glowMotionStrength") private var glowMotionStrength = 1.0
     @State private var editing = false
     @State private var showSettings = false
+    /// ウィンドウの大きさ。iPad で縦画面か横画面かを決める
+    @State private var windowSize: CGSize = .zero
+
+    /// いま使う配置の向き。iPad でウィンドウが横長なら横画面の配置（Split View の細いウィンドウは縦扱い）。iPhone は常に縦
+    private var orientation: BoardOrientation {
+        UIDevice.current.userInterfaceIdiom == .pad && windowSize.width > windowSize.height ? .landscape : .portrait
+    }
+
+    /// 向きごとの配置を編集するためのバインディング
+    private var pageSlots: Binding<[Int: LaunchItem]> {
+        let orientation = orientation
+        return Binding(get: { store.board.slots(for: orientation) },
+                       set: { store.board.setSlots($0, for: orientation) })
+    }
     @Environment(\.scenePhase) private var scenePhase
 
     private var isGlow: Bool { uiStyle == UIStyle.glow.rawValue }
@@ -72,15 +86,25 @@ struct ContentView: View {
             .frame(height: 56)
 
             if editing {
-                EditGridView(slots: $store.board.slots, layout: store.board.layout, allowGroups: true)
+                EditGridView(slots: pageSlots, layout: store.board.layout(for: orientation), allowGroups: true)
+                    // 向きが変わったら、編集中の状態（開いている編集画面など）を捨てて作り直す。
+                    // 古い向きのマス番号のまま、別の向きの配置へ保存してしまわないようにするため
+                    .id(orientation)
             } else {
-                LauncherGridView()
+                LauncherGridView(orientation: orientation)
                     // グループを開いている間だけ最前面にして、暗い背景が下のボタンも覆うようにする
                     .zIndex(store.groupLayerOpen ? 1 : 0)
             }
 
             if DockBar.enabled {
                 DockBar(editing: editing)
+            }
+        }
+        .background {
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { windowSize = geo.size }
+                    .onChange(of: geo.size) { _, size in windowSize = size }
             }
         }
         .background {
@@ -104,7 +128,7 @@ struct ContentView: View {
         .onChange(of: glowMotionStrength) { _, _ in updateGlowMotion() }
         .onAppear { updateGlowMotion() }
         .sheet(isPresented: $showSettings) {
-            SettingsView()
+            SettingsView(orientation: orientation)
                 .environmentObject(store)
                 .tint(tint)
                 .preferredColorScheme(scheme)
@@ -117,6 +141,8 @@ struct ContentView: View {
 }
 
 struct SettingsView: View {
+    /// 行・列と一括配置の対象になる配置の向き（開いたときの画面の向き）
+    let orientation: BoardOrientation
     @EnvironmentObject private var store: BoardStore
     @Environment(\.dismiss) private var dismiss
     @AppStorage("appearance") private var appearance = Appearance.auto.rawValue
@@ -145,11 +171,11 @@ struct SettingsView: View {
     /// 行・列は変更のたびに即反映。収まらなければ元のままにして知らせる。
     private func layoutBinding(_ keyPath: WritableKeyPath<GridLayout, Int>) -> Binding<Int> {
         Binding(
-            get: { store.board.layout[keyPath: keyPath] },
+            get: { store.board.layout(for: orientation)[keyPath: keyPath] },
             set: { newValue in
-                var layout = store.board.layout
+                var layout = store.board.layout(for: orientation)
                 layout[keyPath: keyPath] = newValue
-                if !store.applyLayout(layout) {
+                if !store.applyLayout(layout, for: orientation) {
                     message = "アイテムが収まりません。先にいくつか削除してください。"
                 }
             }
@@ -253,8 +279,17 @@ struct SettingsView: View {
                     }
                     .disabled(!showLabels)
                     // iPad は画面が広いので、行・列を多くできる
-                    Stepper("列: \(store.board.layout.columns)", value: layoutBinding(\.columns), in: isPad ? 2...8 : 2...5)
-                    Stepper("行: \(store.board.layout.rows)", value: layoutBinding(\.rows), in: isPad ? 3...10 : 3...8)
+                    if isPad {
+                        // iPad は縦画面と横画面で別の配置を持つ。いまどちらを変えているかを示す
+                        Text(orientation == .landscape ? "横画面の配置を変更しています（縦画面に戻すと縦の配置）"
+                                                       : "縦画面の配置を変更しています（横画面に回すと横の配置）")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    Stepper("列: \(store.board.layout(for: orientation).columns)", value: layoutBinding(\.columns),
+                            in: isPad ? Board.padColumns : 2...5)
+                    Stepper("行: \(store.board.layout(for: orientation).rows)", value: layoutBinding(\.rows),
+                            in: isPad ? Board.padRows : 3...8)
                 }
 
                 SettingsGroup("操作", id: "touch",
@@ -287,7 +322,7 @@ struct SettingsView: View {
                     Button {
                         Task {
                             working = true
-                            let n = await store.addDetectedApps()
+                            let n = await store.addDetectedApps(for: orientation)
                             working = false
                             message = n > 0 ? "\(n) 件のアプリを配置しました。"
                                             : "追加できるアプリはありませんでした（配置済み、または空きマスなし）。"

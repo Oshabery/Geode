@@ -18,6 +18,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 - 実機の署名は `Local.xcconfig`（git 管理外）の `DEVELOPMENT_TEAM` から読む。無い・空だと Team が None になり署名エラーになる。`./tools/update.sh` が git pull、Team ID の自動検出と保存、`xcodegen` をまとめて行うので、通常はこれを使う
 - Bundle ID は `com.oshabery.geode` / `com.oshabery.geode.widget`、App Group は `group.com.oshabery.geode`。App Group は `project.yml` と `Shared/Models.swift` の `SharedStorage.appGroup` を必ず一致させる
 - 対応端末は iPhone と iPad（`TARGETED_DEVICE_FAMILY: "1,2"`）。iPhone は縦向きのみ、iPad は Split View / Stage Manager のため 4 方向すべてに対応する。iPad では設定の列を 8、行を 10 まで増やせる
+- iPad は縦画面と横画面で別の配置を持つ（`Board.landscapeLayout` / `landscapeSlots`、Optional）。向きはウィンドウの縦横比で決め（`ContentView.orientation`。Split View の細いウィンドウは縦扱い、iPhone は常に縦）、表示・タッチ・編集・設定の行列・一括配置はすべて `Board.layout(for:)` / `slots(for:)` / `setSlots(_:for:)` を通す。横の配置は最初に横画面で編集するまで縦から作る（行と列を入れ替え、範囲外なら縦のまま。`derivedLandscape`）。横で編集した後は、縦と横は別々に変わる。ウィジェットは縦の配置を使う。向きが変わると編集中の状態は作り直し、開いているグループは閉じる
 - 無料の Apple ID（Personal Team）で署名している。実機のアプリは 7 日で期限切れになる
 
 ## 経緯と注意

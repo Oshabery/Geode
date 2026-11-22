@@ -395,6 +395,8 @@ struct GroupBackdrop: View {
 /// - グループ: 触れている間だけ 1 レイヤー上へ中身を展開。アプリの上まで指を滑らせて離すと起動。
 ///   その場や空きマスで離すとホーム階層に戻る。
 struct LauncherGridView: View {
+    /// どちらの向きの配置を表示・操作するか（iPad の横画面は別の配置）
+    let orientation: BoardOrientation
     @EnvironmentObject private var store: BoardStore
     @AppStorage("showLabels") private var showLabels = true
     @AppStorage("gridGap") private var gridGapX = GridDefaults.gapX
@@ -444,17 +446,20 @@ struct LauncherGridView: View {
     private static let closeDuration = 0.22
     private static let closeAnimation = Animation.timingCurve(0.3, 0.0, 0.2, 1.0, duration: closeDuration)
 
+    /// 表示している向きの配置。表示・タッチ・ウィジェットから開くグループのすべてでこれを使う
+    private var pageSlots: [Int: LaunchItem] { store.board.slots(for: orientation) }
+
     var body: some View {
         GeometryReader { geo in
-            let metrics = GridMetrics(size: geo.size, layout: store.board.layout, showLabels: showLabels,
+            let metrics = GridMetrics(size: geo.size, layout: store.board.layout(for: orientation), showLabels: showLabels,
                                       gapX: gridGapX, gapY: gridGapY, iconScale: iconScale,
                                       labelSpacing: labelSpacing, outerMargin: outerMargin, offsetY: gridOffsetY)
             ZStack {
                 if showGridLines { GridLines(metrics: metrics) }
                 GridCells(metrics: metrics) { slot in
-                    TileView(item: store.board.slots[slot], metrics: metrics,
+                    TileView(item: pageSlots[slot], metrics: metrics,
                              highlighted: openGroup == nil && highlighted == slot,
-                             switchState: store.board.slots[slot].flatMap(store.switchState(for:)),
+                             switchState: pageSlots[slot].flatMap(store.switchState(for:)),
                              parallax: true)
                 }
                 .foregroundStyle(.tint)
@@ -527,6 +532,11 @@ struct LauncherGridView: View {
         .onDisappear { store.groupLayerOpen = false }
         .onAppear(perform: openRequestedGroup)
         .onChange(of: store.requestedGroup) { _, _ in openRequestedGroup() }
+        // 向きが変わったら、開いているグループを閉じる（マスの位置が変わるため）
+        .onChange(of: orientation) { _, _ in
+            touchCancelled()
+            if openGroup != nil { close() }
+        }
     }
 
     private func touchMoved(_ slot: Int?, startedAt start: CGPoint) {
@@ -536,7 +546,7 @@ struct LauncherGridView: View {
         }
         // 指が触れている間は、グループの上にある限りレイヤーを開く。
         // 置いた瞬間に少しずれていても、指がグループの上に来た時点で開く（開いた後は離すまで閉じない）
-        if openGroup == nil, let slot, let item = store.board.slots[slot], item.kind == .group {
+        if openGroup == nil, let slot, let item = pageSlots[slot], item.kind == .group {
             openGroup = item
             groupSlot = slot
             // グループ階層に入った合図: カチッとした硬めの触覚
@@ -558,7 +568,7 @@ struct LauncherGridView: View {
             // グループ自身のマス、空きマス、格子の外ではホーム階層に戻るだけ。
             if let slot, slot != groupSlot, let child = group.children[slot] { store.launch(child) }
             close()
-        } else if let slot, slot == touchStart, let item = store.board.slots[slot], item.kind == .action {
+        } else if let slot, slot == touchStart, let item = pageSlots[slot], item.kind == .action {
             store.launch(item)
         }
     }
@@ -580,7 +590,7 @@ struct LauncherGridView: View {
     private func openRequestedGroup() {
         guard let id = store.requestedGroup else { return }
         store.requestedGroup = nil
-        if let entry = store.board.slots.first(where: { $0.value.id == id }) {
+        if let entry = pageSlots.first(where: { $0.value.id == id }) {
             openGroup = entry.value
             groupSlot = entry.key
         }
