@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import Geode
 
 final class GridMetricsTests: XCTestCase {
@@ -103,5 +104,31 @@ final class TouchSessionTests: XCTestCase {
         var session = TouchSession()
         _ = session.begin(at: CGPoint(x: 10, y: 10))
         XCTAssertTrue(session.begin(at: CGPoint(x: 200, y: 300)))
+    }
+}
+
+/// 画面の向きに合わせた傾きの向き（iPad を横向きで使ったときに、光や視差が画面に対して正しく動くこと）
+final class ScreenGravityTests: XCTestCase {
+    private func assertGravity(_ orientation: UIInterfaceOrientation, device: (Double, Double),
+                               screen expected: (Double, Double), line: UInt = #line) {
+        let result = GlowMotion.screenGravity(x: device.0, y: device.1, orientation: orientation)
+        XCTAssertEqual(result.x, expected.0, accuracy: 1e-9, line: line)
+        XCTAssertEqual(result.y, expected.1, accuracy: 1e-9, line: line)
+    }
+
+    func testPortraitIsUnchanged() {
+        assertGravity(.portrait, device: (0.3, -0.8), screen: (0.3, -0.8))
+    }
+
+    func testUpsideDownFlipsBothAxes() {
+        assertGravity(.portraitUpsideDown, device: (0.3, -0.8), screen: (-0.3, 0.8))
+    }
+
+    /// 横向きで画面の「下」に向かう重力は、どちらの横向きでも画面座標で y = -1 になる
+    func testLandscapeMapsScreenDownToNegativeY() {
+        // ホームボタン側が右: 端末の右側（+x）が画面の下を向く
+        assertGravity(.landscapeRight, device: (-1, 0), screen: (0, -1))
+        // ホームボタン側が左: 端末の左側（-x）が画面の下を向く
+        assertGravity(.landscapeLeft, device: (1, 0), screen: (0, -1))
     }
 }

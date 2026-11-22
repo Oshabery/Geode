@@ -157,6 +157,7 @@ struct SettingsView: View {
     }
 
     private var isGlow: Bool { uiStyle == UIStyle.glow.rawValue }
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
         NavigationStack {
@@ -251,8 +252,9 @@ struct SettingsView: View {
                         Slider(value: $labelSpacing, in: 0...24, step: 1)
                     }
                     .disabled(!showLabels)
-                    Stepper("列: \(store.board.layout.columns)", value: layoutBinding(\.columns), in: 2...5)
-                    Stepper("行: \(store.board.layout.rows)", value: layoutBinding(\.rows), in: 3...8)
+                    // iPad は画面が広いので、行・列を多くできる
+                    Stepper("列: \(store.board.layout.columns)", value: layoutBinding(\.columns), in: isPad ? 2...8 : 2...5)
+                    Stepper("行: \(store.board.layout.rows)", value: layoutBinding(\.rows), in: isPad ? 3...10 : 3...8)
                 }
 
                 SettingsGroup("操作", id: "touch",

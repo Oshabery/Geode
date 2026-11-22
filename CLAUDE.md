@@ -1,6 +1,6 @@
 # Geode
 
-URL スキームでアプリを起動する iPhone 用ランチャー（Launch Center Pro 風）。SwiftUI + WidgetKit、iOS 17 以上、Liquid Glass の API を使うため Xcode 26 以降でビルドする。ユーザーとのやり取りは日本語で行う。
+URL スキームでアプリを起動する iPhone / iPad 用ランチャー（Launch Center Pro 風）。SwiftUI + WidgetKit、iOS 17 以上、Liquid Glass の API を使うため Xcode 26 以降でビルドする。ユーザーとのやり取りは日本語で行う。
 
 ## ビルド
 
@@ -17,6 +17,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 - ファイルを追加・削除・改名したとき、`project.yml` を変えたときは `xcodegen` を再実行する
 - 実機の署名は `Local.xcconfig`（git 管理外）の `DEVELOPMENT_TEAM` から読む。無い・空だと Team が None になり署名エラーになる。`./tools/update.sh` が git pull、Team ID の自動検出と保存、`xcodegen` をまとめて行うので、通常はこれを使う
 - Bundle ID は `com.oshabery.geode` / `com.oshabery.geode.widget`、App Group は `group.com.oshabery.geode`。App Group は `project.yml` と `Shared/Models.swift` の `SharedStorage.appGroup` を必ず一致させる
+- 対応端末は iPhone と iPad（`TARGETED_DEVICE_FAMILY: "1,2"`）。iPhone は縦向きのみ、iPad は Split View / Stage Manager のため 4 方向すべてに対応する。iPad では設定の列を 8、行を 10 まで増やせる
 - 無料の Apple ID（Personal Team）で署名している。実機のアプリは 7 日で期限切れになる
 
 ## 経緯と注意
@@ -28,6 +29,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 - ウィジェット（`Widget/LaunchWidget.swift`）の実機での見た目と動作
 - 本体の操作（`App/SystemActions.swift`）: ショートカット App のアクション名（日本語）と消音モードのアクションの有無は記憶ベース。ショートカット経由のライトが点いたままになるか。Geode で上げた画面の明るさが Geode を離れても保たれるか。ミュージックの操作で許可を求められるか、再生状態の通知が届くか
 - グローのライト（`glowLight`）: 文字・記号・縁・下のボタンの見やすさ、オン / オフの分かりやすさ、明るい画面の上でグループ階層の背景が暗く見えるか（初回の配色）
+- iPad: 実機・シミュレータでの見た目（横向き、Split View / Stage Manager の小さなウィンドウ）、横向きでの傾きの向き
 - グローの傾き: 光が動く向きが自然か（`GlowLight.direction` の符号）、滑らかさ、寝転んだときの挙動、発熱や電池の減り
 
 変更したらビルドして確認すること。シミュレータでは他アプリの URL スキームをほとんど開けない（「起動エラー」になるのは正常）ので、起動の確認は実機で行う。
@@ -61,7 +63,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 - **当たり判定**: `GridMetrics.slot(at:)` は格子の外で nil を返す（格子の外周から `edgeHitSlop` = 24pt までは一番近いマスに当てる。外周のアイコンだけ反応しにくかったため）。それより外でのタップや指を離す操作では何も起動しない
 - **グリッド線**: 各アイコンを同じ大きさのボックス（アイコン + 間隔の半分ずつ）で区切る。一番外側の枠線は引かない（ユーザーの指定）。濃さは `gridLineOpacity`（0.05...1、1 が既定）を色指定あり・なしの両方に掛ける。アプリ名を表示しているときは「アイコン + 名前」のまとまりがボックスの中央に来る
 - **ドック**: ユーザーの指定で一旦外している（`DockBar.enabled = false`。画面にも設定にも出さないが、コードと `Board.dock` のデータは残してあり、true に戻せば元どおり）。画面下部の 3 つのボタン（`App/DockBar.swift`）。`Board.dock`（Optional）に保存し、アクションのみ置ける。未割り当てのボタンは通常モードでは表示せず（位置は空けておく）、編集モードでだけ灰色の「＋」を出す（ユーザーの指定）。編集モードの操作はグリッドとそろえる（× で削除、タップで編集、ドラッグで入れ替え）。盤面全体をたどる処理は `Board.topLevelItems` を使い、ドックを漏らさない（`cleanUpIcons` がアイコン画像を消してしまうため）
-- **通知バッジ**: `LaunchItem.showBadge`（Optional）。アクション / グループの編集画面で付け外しする、アイコンを囲む、薄く透き通った赤いガラスの細い縁（`BadgeRing`。赤い点はユーザーの指定でやめた。濃い赤・太い縁・周りの発光は避ける）。そのアクションを Geode から起動すると自動で外れる（`Board.clearBadge`、`BoardStore.launch`）。iOS はほかのアプリの未読や通知を読み取れないので自動では付かない（ユーザーには説明済み）
+- **通知バッジ**: ユーザーの指定で外している（`BadgeRing.enabled = false`）。オフの間は、画面にも編集画面にも出さず、起動時にバッジを外す処理も動かさない（保存済みの `showBadge` はそのまま残るので、true に戻せば元どおり）。オンのときの仕様: `LaunchItem.showBadge`（Optional）を編集画面で付け外しし、アイコンを薄く透き通った赤いガラスの細い縁（`BadgeRing`）で囲む。Geode から起動すると外れる（`Board.clearBadge`）。iOS はほかのアプリの未読を読み取れないので自動では付かない
 - **ベース色**: `LaunchItem.baseColor`（HSB 文字列、Optional）。画像の無いシンボルアイコンの下地に使う。`HSBColor` はウィジェットからも使うので `Shared/HSBColor.swift` に置く
 - **グループ**: 指で触れている間だけ階層を表示する。指がグループの上に来た時点で開き（置いた位置が少しずれていても、滑らせて乗せても開く）、離すかタッチが取り消されるまで開いたまま。タッチは SwiftUI のジェスチャーではなく `TouchSurface`（UIKit の touchesBegan/Moved/Ended/Cancelled）で直接受け取る。SwiftUI の DragGesture では、指を置いたまま動かさないと開くまで数秒かかることがあったため。タッチの始まりは `TouchSession` でも判断する。アプリのあるマスで離すと起動、グループ自身のマスや空きマスで離すとホームに戻る。階層に入るとき `.rigid` の触覚を返す。階層の背景（`GroupBackdrop`）は画面全体を覆い（グリッドの枠で切ると四角い境界が見えるため）、押しているグループの周りだけ薄くする。開いている間は `store.groupLayerOpen` で `LauncherGridView` を最前面にし、背景は触っても反応しない。中身のアイコンはグループのマスから外へ、近いものから順に出る（`GroupChildAppear`）。距離は上下左右 1 マスを 1、斜め 1 マスを 1.5 として数え、3 で頭打ち。隣のマス（距離 1）は遅れなしで、それより遠いものは距離 1 増えるごとに 0.035 秒遅れる。移動量はマスの間隔の 9% × 距離（`entranceDelayPerUnit` / `entranceTravelPerUnit`）。大きく動かすと定位置に着くまで遅く見えるため、移動距離は小さく保つ（押しているグループ自身は別の層で薄く出すだけ）。入るときの動きは、出だしが速く終わりに余韻が残るカーブ（`LauncherGridView.openAnimation`、0.3 秒）。出だしを遅くしないこと（ユーザーがもたつきを嫌う）。戻るときは短く（0.22 秒）
 - **保存**: 盤面は App Group の `board.json`。`Board` / `LaunchItem` に必須のフィールドを足すと既存データが読めなくなるので、足すならオプショナルにするか、設定は `@AppStorage` に置く（外観・色・サイズなどの設定はすべて `@AppStorage`）
@@ -70,14 +72,29 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 - **実機で確認済み**: Geode で直接点けたライトは Geode を離れると消える（そのためショートカット経由のライトも用意）。ライトの使用でカメラの許可は求められない。ショートカット実行後は `x-success=geode://` で Geode に戻る
 - **スイッチ**: オン / オフの操作は、オンの間アイコンをネガポジ反転して示す（シンボルは記号と下地の色を入れ替え、画像は色を反転。小さなスイッチ表示はユーザーの指定でやめた）。押すと `.rigid` の触覚を返す（`BoardStore.launch` だけで行う）。Geode で直接の操作（`DirectKind.isSwitch`）は URL から判定し、実際の状態を読む（`directActionPerformed` 通知、前面復帰時、ミュージックの再生状態通知で `refreshDirectStates`）。ショートカット経由は `isToggle == true` で、状態を読めないので推定値。`geode://` への成功の戻りで切り替え、設定画面で手動補正できる。推定値は `UserDefaults` の `toggleStates`（盤面とは別）
 - **本体の操作**: Geode 自身が実行する操作は `geode://<操作名>` の URL で表し（`DirectKind`: torch / brightness / awake / music-playpause / music-next / music-previous / copy?text=）、知らない操作名はエラーにする。電話・メッセージ・メール・FaceTime・Web・経路は通常の URL（tel: など）を組み立てる。`SystemActions.performIfBuiltIn` を `BoardStore.launch` とテスト起動の両方から通す。消音・Wi-Fi など iOS が公開 API を持たない操作は、ショートカット App のショートカットを `shortcuts://x-callback-url/run-shortcut?name=` で実行する
-- **デザイン**: 設定の「デザイン」（`@AppStorage("uiStyle")`）で「標準」と「グロー」を切り替える。標準を選んでいる間はこれまでの見た目を一切変えないこと（ユーザーの条件。グローの描画は `App/GlowStyle.swift` に置き、各所は `if/else` で分岐）。グローの色は `@AppStorage("glowHue")`（色相 0–360、プリセットは `GlowPalette.presets`）で、ベース色を指定したアイテムはその色相を優先する。「グラデ」（`glowGradient`）はアプリアイコンの配色（中心の色相からのずれ `GlowPalette.gradientOffsets`: コーラル・ピンク・パープル・ブルー・シアン）で、背景の下からの光の色を左から右へ 3 色（ピンク → パープル → ブルー）に移り変わらせ、タイルとボタンを上ピンク寄り → 下ブルー寄りにする。色相のスライダーで全体がそろってずれる。「モノトーン」（`glowMono`）は、グローの色から作る背景・タイル・記号・下の光・丸いボタンだけ `.saturation(0)` で色を抜く（ベース色のアイコンと画像は色のまま）。グローの明るさは `glowLight`（既定はダーク）で、グローの各ビューは `colorScheme` を見てライト用の配色に分岐する（ダークの見た目は変えないこと）。グローのライトではグループ階層の背景も明るいすりガラス（中心は透け、離れるほど白い霧）にし、中身もライトの配色で描く。グローは表示時だけ配色を固定し、保存済みの外観・背景色・ガラス風アイコンの設定は書き換えない。グローのタイルではぼかしと影を使わない（グループ表示を重くしないため）。傾き（`GlowMotion`、CoreMotion の重力）で光の向き（`GlowLight`）を動かす。傾き 0 では真下からの光。ライトの強さは `glowIntensity`（1...10、5 が基準）で、背景の色の光の濃さと広がり、タイルの外にこぼれる光、シンボルのタイルと丸いボタンの色の濃さ・明るさ（`GlowPalette.tileScale`、オンの状態は変えない）に効く。地の色は真っ黒ではなく `Color(white: 0.04)`（ユーザーの指定）。タイルの外の光は傾きで動く幅を小さくしてある（`GlowUnderLight.travel`）。グローのライトでは、この光の代わりに同じ形の影を落とす（傾きでは光と反対側へ動く）。視差: 通常モードのグリッド（グループ内を含む）のアイコンは傾きと逆へ最大 `glowParallax` pt ずれる（`GlowParallax`、見た目だけで当たり判定は動かさない。編集中は動かさない）。傾きは重力から角度（左右 asin、前後は y-z 面の角度）に直して縦横同じ感度にし、ベクトルの長さで 1 までに抑える。120 回/秒で読み（`CADisableMinimumFrameDurationOnPhone` で 120Hz 表示を許可）、視差は速い `GlowParallaxMotion`（ほぼ遅れなし）、光・反射・影は `GlowMotion.tilt`（少しなめらか、60 回/秒。全アイコン分の描き直しでタッチへの反応が遅れないよう間引く）と分けている。向きは `GlowMotion.signX/signY` と `GlowLight.direction`。傾きは末端の小さなビュー（`GlowEdges` / `GlowSurfaceLight` / `GlowUnderLight` / `GlowBackground`）だけが購読し、`ContentView` や `TileView` では購読しない（毎回グリッド全体が描き直されるため）。アイコンの表面には傾きですべる丸い照明の映り込み（`GlowSpecular`、端がなだらかに消える放射グラデーション）を乗せる（画像・シンボルの両方）。縁の屈折の色は下の色相（グローの色 / ベース色 / 画像の代表色）に合わせ、加算（`.plusLighter`）で重ねる。導入前の状態はコミット `793cda4`
+- **デザイン**: 設定の「デザイン」（`@AppStorage("uiStyle")`）で「標準」と「グロー」を切り替える。標準を選んでいる間はこれまでの見た目を一切変えないこと（ユーザーの条件。グローの描画は `App/GlowStyle.swift` に置き、各所は `if/else` で分岐）。グローの色は `@AppStorage("glowHue")`（色相 0–360、プリセットは `GlowPalette.presets`）で、ベース色を指定したアイテムはその色相を優先する。「グラデ」（`glowGradient`）はアプリアイコンの配色（中心の色相からのずれ `GlowPalette.gradientOffsets`: コーラル・ピンク・パープル・ブルー・シアン）で、背景の下からの光の色を左から右へ 3 色（ピンク → パープル → ブルー）に移り変わらせ、タイルとボタンを上ピンク寄り → 下ブルー寄りにする。色相のスライダーで全体がそろってずれる。「モノトーン」（`glowMono`）は、グローの色から作る背景・タイル・記号・下の光・丸いボタンだけ `.saturation(0)` で色を抜く（ベース色のアイコンと画像は色のまま）。グローの明るさは `glowLight`（既定はダーク）で、グローの各ビューは `colorScheme` を見てライト用の配色に分岐する（ダークの見た目は変えないこと）。グローのライトではグループ階層の背景も明るいすりガラス（中心は透け、離れるほど白い霧）にし、中身もライトの配色で描く。グローは表示時だけ配色を固定し、保存済みの外観・背景色・ガラス風アイコンの設定は書き換えない。グローのタイルではぼかしと影を使わない（グループ表示を重くしないため）。傾き（`GlowMotion`、CoreMotion の重力）で光の向き（`GlowLight`）を動かす。傾き 0 では真下からの光。ライトの強さは `glowIntensity`（1...10、5 が基準）で、背景の色の光の濃さと広がり、タイルの外にこぼれる光、シンボルのタイルと丸いボタンの色の濃さ・明るさ（`GlowPalette.tileScale`、オンの状態は変えない）に効く。地の色は真っ黒ではなく `Color(white: 0.04)`（ユーザーの指定）。タイルの外の光は傾きで動く幅を小さくしてある（`GlowUnderLight.travel`）。グローのライトでは、この光の代わりに同じ形の影を落とす（傾きでは光と反対側へ動く）。視差: 通常モードのグリッド（グループ内を含む）のアイコンは傾きと逆へ最大 `glowParallax` pt ずれる（`GlowParallax`、見た目だけで当たり判定は動かさない。編集中は動かさない）。傾きは重力から角度（左右 asin、前後は y-z 面の角度）に直して縦横同じ感度にし、ベクトルの長さで 1 までに抑える。120 回/秒で読み（`CADisableMinimumFrameDurationOnPhone` で 120Hz 表示を許可）、視差は速い `GlowParallaxMotion`（ほぼ遅れなし）、光・反射・影は `GlowMotion.tilt`（少しなめらか、60 回/秒。全アイコン分の描き直しでタッチへの反応が遅れないよう間引く）と分けている。向きは `GlowMotion.signX/signY` と `GlowLight.direction`。重力は画面の向き（横向き・逆さ）に合わせて画面の座標に直してから使い（`GlowMotion.screenGravity`）、向きが変わったら基準の姿勢を取り直す。傾きは末端の小さなビュー（`GlowEdges` / `GlowSurfaceLight` / `GlowUnderLight` / `GlowBackground`）だけが購読し、`ContentView` や `TileView` では購読しない（毎回グリッド全体が描き直されるため）。アイコンの表面には傾きですべる丸い照明の映り込み（`GlowSpecular`、端がなだらかに消える放射グラデーション）を乗せる（画像・シンボルの両方）。縁の屈折の色は下の色相（グローの色 / ベース色 / 画像の代表色）に合わせ、加算（`.plusLighter`）で重ねる。導入前の状態はコミット `793cda4`
 - **ガラス風アイコン**: 標準デザインの「アイコンをガラス風にする」設定はユーザーの指定で削除した（`ItemIcon` の `glass` 引数と `GlassRim` / `GlassVolume` は使われていない）。ボタンなどの UI は標準の Liquid Glass
+
+## ブランチとマージ
+
+ユーザーが指定した運用。以後のセッションでも必ず守る。
+
+- 作業は 1 本の作業ブランチ（`claude/` で始まる名前。現在は `claude/work`）に積む。`main` へ直接 push しない
+- 修正のたびにコミットして作業ブランチへ push する。ユーザーは Mac で作業ブランチをそのまま pull して確認するので、確認のためにマージは不要
+- `main` へまとめるのは週 1 回だけ。テストが通るたびにまとめなくてよい
+- まとめる時期の声かけはユーザーがする。「マージの準備をして」と言われたら、次の手順で PR を用意する
+  1. 作業ブランチと `main` の差を確かめる。差がなければ「まとめるものはありません」と伝える
+  2. 作業ブランチ → `main` の PR を作る（すでに開いていれば、説明を最新に更新する）
+  3. PR の説明に日本語で書く: 前回のマージからの変更点、テスト結果（分からなければ「未確認」）、実機などで確認が必要な点、マージ方法は「Create a merge commit」
+  4. PR のリンクと、マージ前に確認してほしい点を短く伝える
+- マージはユーザーが GitHub で「Create a merge commit」で行う。Squash・Rebase は使わない（Mac 側の pull がつながらなくなるため）。**Claude は PR をマージしない**
+- ビルドやテストが通っていない状態のときは、PR のリンクを渡す前にそのことを先に伝える
+- マージされたら、作業ブランチを同じ名前のまま最新の `main` から作り直して作業を続ける（Mac はブランチを切り替えずに pull を続けられる）
+- CI は作業ブランチ（`claude/**`）への push でも動く（`claude/` からの PR では二重に動かさない）。push のあとは CI の結果を確認し、失敗していればユーザーに伝える
 
 ## 作業の進め方
 
 - 設定画面の各まとまりは `SettingsGroup`（折りたたみ、開閉状態は `settingsOpen.<id>` に保存、最初は閉じている）で作る
 
-- 変更はブランチを切ってプルリクエストにする（`main` に直接プッシュしない）
-- **マージは Claude が行ってよい**（ユーザーの指定）。条件: CI の Build + Unit Test が成功していること。UI Test（参考扱い）が失敗した場合は、原因がその PR の変更でないことを確かめ（再実行は 1 回まで）、PR にコメントしてからマージする。マージ後は `main` の CI も確認する
-- 次の変更は自動でマージせず、内容を説明してユーザーの承認を得る: 署名・証明書・プロビジョニング、Bundle ID、Entitlements・Capabilities、App Store / TestFlight への提出や配信、課金、保存データを消す・作り直す変更
+- 署名・証明書・プロビジョニング、Bundle ID、Entitlements・Capabilities、App Store / TestFlight への提出や配信、課金、保存データを消す・作り直す変更は、入れる前に内容を説明してユーザーの承認を得る
 - ユーザーは設定で調整できることを好む。見た目の値を決め打ちにする前に、設定項目にするか検討する

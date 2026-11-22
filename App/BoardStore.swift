@@ -106,7 +106,7 @@ final class BoardStore: ObservableObject {
             return
         }
         // 開いた時点で確認したとみなして、通知バッジを外す
-        if item.showBadge == true {
+        if BadgeRing.enabled && item.showBadge == true {
             var updated = board
             if updated.clearBadge(item.id) { board = updated }
         }

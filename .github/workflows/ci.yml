@@ -3,7 +3,8 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    # 作業ブランチ（claude/…）への push でもビルドとテストを確認する
+    branches: [main, 'claude/**']
   workflow_dispatch:
 
 concurrency:
@@ -14,6 +15,8 @@ concurrency:
 jobs:
   unit:
     name: Build + Unit Test
+    # claude/… からの PR は push の実行で確認済み（同じコミットの結果が PR にも表示される）なので二重に動かさない
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'claude/')
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
@@ -40,6 +43,8 @@ jobs:
 
   ui:
     name: UI Test + Screenshots (non-blocking)
+    # claude/… からの PR は push の実行で確認済み（同じコミットの結果が PR にも表示される）なので二重に動かさない
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'claude/')
     runs-on: macos-latest
     timeout-minutes: 60
     # 安定するまでは結果を参考扱いにする（失敗しても PR を止めない）

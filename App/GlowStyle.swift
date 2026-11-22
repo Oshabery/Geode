@@ -120,8 +120,37 @@ final class GlowMotion: ObservableObject {
     /// 角度の差（-π...π に折り返す）
     private static func delta(_ a: Double, _ b: Double) -> Double { remainder(a - b, 2 * .pi) }
 
-    private func update(gx: Double, gy: Double, gz: Double) {
+    /// 端末の座標の重力（x: 端末の右、y: 端末の上）を、画面の向きに合わせた座標に直す。
+    /// iPad などで横向き・逆さに持ったときも、画面の右・上を基準に光や視差が動くようにする
+    nonisolated static func screenGravity(x: Double, y: Double,
+                                          orientation: UIInterfaceOrientation) -> (x: Double, y: Double) {
+        switch orientation {
+        case .portraitUpsideDown: return (-x, -y)
+        case .landscapeRight: return (-y, x)    // ホームボタン側が右（端末を左に 90° 回した向き）
+        case .landscapeLeft: return (y, -x)     // ホームボタン側が左（端末を右に 90° 回した向き）
+        default: return (x, y)
+        }
+    }
+
+    private var lastOrientation: UIInterfaceOrientation = .unknown
+
+    private var currentOrientation: UIInterfaceOrientation {
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+        return scene?.effectiveGeometry.interfaceOrientation ?? .portrait
+    }
+
+    private func update(gx rawX: Double, gy rawY: Double, gz: Double) {
         guard manager.isDeviceMotionActive else { return }
+        let orientation = currentOrientation
+        if orientation != lastOrientation {
+            // 向きが変わったら、今の持ち方を新しい基準にする（回転の瞬間に光が大きく飛ばないように）
+            lastOrientation = orientation
+            neutral = nil
+        }
+        let screen = Self.screenGravity(x: rawX, y: rawY, orientation: orientation)
+        let gx = screen.x, gy = screen.y
         // 重力の向きを角度に直す。左右は asin、前後は y-z 面での角度にして、
         // 立てて持っても寝かせて持っても同じ感度にする（斜めに傾けたときに縦の動きが弱くならないように）
         let roll = asin(max(-1, min(1, gx)))
