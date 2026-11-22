@@ -1,6 +1,6 @@
 # Geode
 
-URL スキームでアプリを起動する iPhone 用ランチャー（SwiftUI + WidgetKit / iOS 17+）。
+URL スキームでアプリを起動する iPhone / iPad 用ランチャー（SwiftUI + WidgetKit / iOS 17+）。
 
 ## ビルド
 
