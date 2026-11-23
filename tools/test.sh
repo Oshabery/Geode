@@ -66,6 +66,17 @@ esac
 
 RESULT="build/${NAME}.xcresult"
 rm -rf "$RESULT"
+
+# iPad の UI テストは画面を録画する（回転の見え方を確かめるため。テストは回す直前に GEODE-ROTATE と時刻を出力する）
+REC_PID=""
+if [ "$FAMILY" = iPad ] && { [ "$MODE" = ui ] || [ "$MODE" = all ]; }; then
+  rm -f "build/${NAME}.mp4"
+  xcrun simctl io "$DEVICE_ID" recordVideo --codec=h264 --force "build/${NAME}.mp4" > "build/${NAME}-video.log" 2>&1 &
+  REC_PID=$!
+  sleep 2
+  echo "録画の開始: $(date -u +%Y-%m-%dT%H:%M:%SZ) $(date +%s)" | tee -a "build/${NAME}-video.log"
+fi
+
 set +e
 xcodebuild "$ACTION" \
   -project Geode.xcodeproj \
@@ -78,8 +89,14 @@ xcodebuild "$ACTION" \
 STATUS=$?
 set -e
 
+if [ -n "$REC_PID" ]; then
+  kill -INT "$REC_PID" 2>/dev/null || true
+  wait "$REC_PID" 2>/dev/null || true
+  echo "録画: build/${NAME}.mp4"
+fi
+
 # 要点だけ表示する（全文は build/<mode>.log）
-grep -E "error:|Test Case .*(passed|failed|skipped)|Executed [0-9]+ test|\*\* (BUILD|TEST) (SUCCEEDED|FAILED) \*\*" "build/${NAME}.log" || true
+grep -E "error:|Test Case .*(passed|failed|skipped)|Executed [0-9]+ test|\*\* (BUILD|TEST) (SUCCEEDED|FAILED) \*\*|GEODE-ROTATE|横: ウィンドウ" "build/${NAME}.log" || true
 
 # 失敗したときは、原因を追えるようにログの末尾と使えるシミュレータを表示する
 # （CI ではログファイルを開けないため、ここに出さないと詳細が分からない）

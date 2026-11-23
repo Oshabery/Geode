@@ -95,6 +95,8 @@ struct GridCells<Cell: View>: View {
     /// 指定しなければマスの番号で識別する
     var itemID: ((Int) -> AnyHashable)? = nil
     @ViewBuilder let cell: (Int) -> Cell
+    /// iPad: グリッドは端末に対して動かさず、アイコンだけを持った向きに回す（iPhone では 0）
+    @Environment(\.geodeIconAngle) private var iconAngle
 
     private struct Entry: Identifiable {
         let id: AnyHashable
@@ -112,6 +114,7 @@ struct GridCells<Cell: View>: View {
             ForEach(entries) { entry in
                 cell(entry.slot)
                     .frame(width: metrics.cellSize.width, height: metrics.cellSize.height, alignment: .top)
+                    .rotationEffect(.degrees(iconAngle))
                     .position(metrics.center(entry.slot))
             }
         }

@@ -134,10 +134,10 @@ final class GlowMotion: ObservableObject {
 
     private var lastOrientation: UIInterfaceOrientation = .unknown
 
-    /// 傾きを表す座標の向き。iPad ではウィンドウとは別に中身だけを回すことがあるので、回した中身の向きを使う
+    /// 傾きを表す座標の向き。iPad ではグリッドと背景を端末に対して動かさない（`FixedCanvas`）ので、端末の座標のまま使う
     private var currentOrientation: UIInterfaceOrientation {
         if UIDevice.current.userInterfaceIdiom == .pad {
-            return CanvasOrientation.shared.contentOrientation
+            return .portrait
         }
         let scene = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
@@ -310,23 +310,13 @@ struct GlowBackground: View {
 
     @AppStorage(GlowPalette.monoKey) private var mono = false
 
-    /// 中身の座標の傾き → 端末の座標 → 画面（ウィンドウ）の座標。iPhone や縦向きでは変わらない
-    private static func windowTilt(_ tilt: CGSize) -> CGSize {
-        guard UIDevice.current.userInterfaceIdiom == .pad else { return tilt }
-        let canvas = CanvasOrientation.shared
-        let device = CanvasRotation.deviceVector(fromScreen: tilt, orientation: canvas.contentOrientation)
-        let window = GlowMotion.screenGravity(x: device.width, y: device.height, orientation: canvas.windowOrientation)
-        return CGSize(width: window.x, height: window.y)
-    }
-
     var body: some View {
         content.glowMonochrome(mono)
     }
 
     @ViewBuilder
     private var content: some View {
-        // 背景は中身と一緒に回さないので、回した中身の座標の傾きを、画面（ウィンドウ）の座標に直して使う
-        let light = GlowLight(Self.windowTilt(motion.tilt))
+        let light = GlowLight(motion.tilt)
         let f = GlowPalette.factor(intensity)
         if scheme == .light {
             lightBody(light, f)

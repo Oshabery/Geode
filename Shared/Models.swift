@@ -42,10 +42,14 @@ struct Board: Codable {
     var slots: [Int: LaunchItem] = [:]
     /// 画面下部の 3 つのボタン（0...2）。既存の board.json に無くても読めるよう Optional
     var dock: [Int: LaunchItem]? = nil
-    /// iPad の横画面の配置。nil の間は縦の配置から作ったもの（derivedLandscape）を使い、
-    /// 横画面で最初に編集したときに保存する。既存の board.json に無くても読めるよう Optional
-    var landscapeLayout: GridLayout? = nil
+    /// iPad の横画面のアイコンの配置。グリッド（行と列）は縦と共通で、アイコンの位置だけが縦と別。
+    /// nil の間は縦の配置と同じ。横画面で最初に編集したときに保存する。既存の board.json に無くても読めるよう Optional
     var landscapeSlots: [Int: LaunchItem]? = nil
+    /// landscapeSlots が「縦と同じ行と列のグリッド」用に保存されたものか。
+    /// 以前（横画面で行と列を入れ替えていた頃）に保存した横の配置はマス番号の意味が違うので使わない（データは消さずに残す）
+    var landscapeSharesGrid: Bool? = nil
+    /// 以前の版で保存していた横画面の行と列（今は使わない。読み書きできるように残す）
+    var landscapeLayout: GridLayout? = nil
 
     static let dockCount = 3
 
@@ -61,60 +65,71 @@ struct Board: Codable {
 
     // MARK: 向きごとの配置
 
-    /// まだ横画面で編集していないときの横の配置: 縦の配置の行と列を入れ替えたもの。
-    /// 入れ替えると設定できる範囲を外れるとき（2×10 など）は、縦の配置をそのまま使う
-    var derivedLandscape: (layout: GridLayout, slots: [Int: LaunchItem]) {
-        let swapped = GridLayout(columns: layout.rows, rows: layout.columns)
-        guard Self.padColumns.contains(swapped.columns), Self.padRows.contains(swapped.rows) else {
-            return (layout, slots)
-        }
-        return (swapped, Self.transpose(slots, from: layout))
-    }
+    /// 横画面用の配置を持っているか（今のグリッド用に保存されたものだけ）
+    var hasLandscapeArrangement: Bool { landscapeSharesGrid == true && landscapeSlots != nil }
 
-    /// 行と列を入れ替えた位置に移す（グループの中身も同じように移すので、中身がグループ自身のマスに重ならない）
-    static func transpose(_ slots: [Int: LaunchItem], from layout: GridLayout) -> [Int: LaunchItem] {
-        var result: [Int: LaunchItem] = [:]
-        for (index, item) in slots {
-            let row = index / layout.columns, column = index % layout.columns
-            var moved = item
-            if !item.children.isEmpty {
-                moved.children = transpose(item.children, from: layout)
-            }
-            // 入れ替え後は列の数 = 元の行の数
-            result[column * layout.rows + row] = moved
-        }
-        return result
-    }
+    /// 行と列は縦と横で共通
+    func layout(for orientation: BoardOrientation) -> GridLayout { layout }
 
-    func layout(for orientation: BoardOrientation) -> GridLayout {
-        orientation == .portrait ? layout : (landscapeLayout ?? derivedLandscape.layout)
-    }
-
+    /// 向きごとのアイコンの配置。横の配置がまだ無ければ縦と同じ
     func slots(for orientation: BoardOrientation) -> [Int: LaunchItem] {
-        orientation == .portrait ? slots : (landscapeSlots ?? derivedLandscape.slots)
+        if orientation == .landscape, hasLandscapeArrangement, let landscape = landscapeSlots { return landscape }
+        return slots
     }
 
-    /// 向きごとの配置を書き換える。横画面を初めて書き換えたときは、その時点の横の配置（縦から作ったもの）を保存する
+    /// 向きごとの配置を書き換える。横画面を初めて書き換えたときから、横は縦と別の配置になる
     mutating func setSlots(_ newSlots: [Int: LaunchItem], for orientation: BoardOrientation) {
         switch orientation {
         case .portrait:
             slots = newSlots
         case .landscape:
-            if landscapeLayout == nil { landscapeLayout = derivedLandscape.layout }
             landscapeSlots = newSlots
+            landscapeSharesGrid = true
         }
     }
 
-    mutating func setArrangement(layout newLayout: GridLayout, slots newSlots: [Int: LaunchItem],
-                                 for orientation: BoardOrientation) {
-        switch orientation {
-        case .portrait:
-            layout = newLayout
-            slots = newSlots
-        case .landscape:
-            landscapeLayout = newLayout
-            landscapeSlots = newSlots
+    /// 行列数を変える（縦と横で共通なので、横画面の配置も一緒に移す）。同じ行・列の位置へ移し、
+    /// はみ出したものは空きマスへ詰める。どちらかが収まらない場合は変えずに false
+    mutating func changeLayout(to new: GridLayout) -> Bool {
+        guard let portrait = Self.remapPage(slots, from: layout, to: new) else { return false }
+        if hasLandscapeArrangement, let landscape = landscapeSlots {
+            guard let moved = Self.remapPage(landscape, from: layout, to: new) else { return false }
+            landscapeSlots = moved
         }
+        layout = new
+        slots = portrait
+        return true
+    }
+
+    /// 1 画面分の配置（グループの中身も）を新しい行列数へ移す。収まらない場合は nil
+    static func remapPage(_ slots: [Int: LaunchItem], from old: GridLayout, to new: GridLayout) -> [Int: LaunchItem]? {
+        guard var top = remap(slots, from: old, to: new, reserved: nil) else { return nil }
+        for (slot, item) in top where item.kind == .group {
+            guard let kids = remap(item.children, from: old, to: new, reserved: slot) else { return nil }
+            top[slot]?.children = kids
+        }
+        return top
+    }
+
+    private static func remap(_ slots: [Int: LaunchItem], from old: GridLayout, to new: GridLayout,
+                              reserved: Int?) -> [Int: LaunchItem]? {
+        var result: [Int: LaunchItem] = [:]
+        var overflow: [LaunchItem] = []
+        for (i, item) in slots.sorted(by: { $0.key < $1.key }) {
+            let r = i / old.columns, c = i % old.columns
+            let target = r * new.columns + c
+            if r < new.rows, c < new.columns, target != reserved {
+                result[target] = item
+            } else {
+                overflow.append(item)
+            }
+        }
+        for item in overflow {
+            guard let free = (0..<new.capacity).first(where: { result[$0] == nil && $0 != reserved })
+            else { return nil }
+            result[free] = item
+        }
+        return result
     }
 
     func find(_ id: UUID) -> LaunchItem? {

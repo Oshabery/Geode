@@ -109,44 +109,16 @@ final class LandscapeArrangementTests: XCTestCase {
         LaunchItem(kind: .action, name: name, iconFile: icon)
     }
 
-    /// 横の配置が無いときは、縦の行と列を入れ替えた配置になる（3×6 → 6×3）
-    func testLandscapeIsDerivedByTransposingUntilEdited() {
+    /// 行と列は縦と横で共通。横の配置が無いときは縦と同じ並び
+    func testLandscapeSharesTheGridAndStartsAsPortrait() {
         var board = Board()          // 3 列 × 6 行
-        board.slots[1] = item("a")   // 縦: 0 行目 1 列目
-        board.slots[5] = item("b")   // 縦: 1 行目 2 列目
+        board.slots[1] = item("a")
+        board.slots[5] = item("b")
 
-        let layout = board.layout(for: .landscape)
-        let slots = board.slots(for: .landscape)
-
-        XCTAssertEqual(layout, GridLayout(columns: 6, rows: 3))
-        XCTAssertEqual(slots[6]?.name, "a")    // 横: 1 行目 0 列目
-        XCTAssertEqual(slots[13]?.name, "b")   // 横: 2 行目 1 列目
+        XCTAssertEqual(board.layout(for: .landscape), board.layout)
+        XCTAssertEqual(board.slots(for: .landscape)[1]?.name, "a")
+        XCTAssertEqual(board.slots(for: .landscape)[5]?.name, "b")
         XCTAssertNil(board.landscapeSlots)     // 読むだけでは保存しない
-    }
-
-    /// グループの中身も同じように入れ替わり、グループ自身のマスと重ならない
-    func testGroupContentsAreTransposedToo() {
-        var group = LaunchItem(kind: .group, name: "G")
-        group.children[2] = item("child")      // 縦: 0 行目 2 列目
-        var board = Board()
-        board.slots[0] = group
-
-        let landscapeGroup = board.slots(for: .landscape)[0]
-        XCTAssertEqual(landscapeGroup?.children[12]?.name, "child")  // 横: 2 行目 0 列目
-        XCTAssertNil(landscapeGroup?.children[0])
-    }
-
-    /// 入れ替えると設定できる範囲を外れる配置（2×10、8×10）では、縦の配置をそのまま使う
-    func testDerivedLayoutStaysWithinTheAllowedRange() {
-        for portrait in [GridLayout(columns: 2, rows: 10), GridLayout(columns: 8, rows: 10),
-                         GridLayout(columns: 3, rows: 6), GridLayout(columns: 5, rows: 8)] {
-            var board = Board()
-            board.layout = portrait
-            let landscape = board.layout(for: .landscape)
-            XCTAssertTrue(Board.padColumns.contains(landscape.columns), "\(portrait)")
-            XCTAssertTrue(Board.padRows.contains(landscape.rows), "\(portrait)")
-            XCTAssertEqual(landscape.capacity, portrait.capacity)
-        }
     }
 
     /// 横画面で編集しても、縦画面の配置は変わらない
@@ -161,8 +133,23 @@ final class LandscapeArrangementTests: XCTestCase {
 
         XCTAssertEqual(board.slots[0]?.name, "portrait")
         XCTAssertNil(board.slots[3])
-        XCTAssertEqual(board.landscapeLayout, GridLayout(columns: 6, rows: 3))
         XCTAssertEqual(board.slots(for: .landscape)[3]?.name, "landscape-only")
+        XCTAssertNil(board.slots(for: .landscape)[0])
+    }
+
+    /// 以前の版（横画面で行と列を入れ替えていた頃）に保存した横の配置は使わず、縦と同じ並びで始める。データは消さない
+    func testOldTransposedLandscapeIsIgnoredButKept() throws {
+        var board = Board()
+        board.slots[0] = item("a")
+        board.landscapeLayout = GridLayout(columns: 6, rows: 3)
+        board.landscapeSlots = [7: item("old", icon: "old.png")]
+        let decoded = try JSONDecoder().decode(Board.self, from: JSONEncoder().encode(board))
+
+        XCTAssertFalse(decoded.hasLandscapeArrangement)
+        XCTAssertEqual(decoded.slots(for: .landscape)[0]?.name, "a")
+        XCTAssertNil(decoded.slots(for: .landscape)[7])
+        XCTAssertEqual(decoded.landscapeSlots?[7]?.name, "old")
+        XCTAssertTrue(decoded.referencedIconFiles.contains("old.png"), "使わなくなった配置のアイコン画像も消さない")
     }
 
     /// 横画面にだけ置いたアイテムも、アイコン画像の掃除と ID 検索の対象になる
@@ -175,12 +162,37 @@ final class LandscapeArrangementTests: XCTestCase {
         XCTAssertEqual(board.find(only.id)?.name, "landscape-only")
     }
 
-    /// 以前のアプリで保存した盤面には横の配置が無く、縦から作った配置で表示される
+    /// 以前のアプリで保存した盤面には横の配置が無く、縦と同じ並びで表示される
     func testOldBoardsHaveNoStoredLandscape() throws {
         var board = Board()
         board.slots[0] = item("a")
         let decoded = try JSONDecoder().decode(Board.self, from: JSONEncoder().encode(board))
-        XCTAssertNil(decoded.landscapeLayout)
         XCTAssertNil(decoded.landscapeSlots)
+        XCTAssertNil(decoded.landscapeSharesGrid)
+        XCTAssertEqual(decoded.slots(for: .landscape)[0]?.name, "a")
+    }
+
+    /// 行と列を変えると、縦と横の両方の配置が新しいグリッドへ移る
+    func testChangingTheGridMovesBothArrangements() {
+        var board = Board()
+        board.layout = GridLayout(columns: 4, rows: 4)
+        board.slots[5] = item("p")                       // 1 行目 1 列目
+        board.setSlots([6: item("l")], for: .landscape)  // 1 行目 2 列目
+
+        XCTAssertTrue(board.changeLayout(to: GridLayout(columns: 3, rows: 5)))
+        XCTAssertEqual(board.slots[4]?.name, "p")                     // 1 行目 1 列目
+        XCTAssertEqual(board.slots(for: .landscape)[5]?.name, "l")    // 1 行目 2 列目
+    }
+
+    /// 横の配置が収まらないときは、縦も含めて行と列を変えない
+    func testGridChangeIsRefusedIfLandscapeDoesNotFit() {
+        var board = Board()
+        board.layout = GridLayout(columns: 4, rows: 4)
+        var full: [Int: LaunchItem] = [:]
+        for i in 0..<16 { full[i] = item("l\(i)") }
+        board.setSlots(full, for: .landscape)
+
+        XCTAssertFalse(board.changeLayout(to: GridLayout(columns: 3, rows: 4)))
+        XCTAssertEqual(board.layout, GridLayout(columns: 4, rows: 4))
     }
 }

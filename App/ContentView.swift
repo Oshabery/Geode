@@ -34,11 +34,11 @@ struct ContentView: View {
     @AppStorage("glowMotionStrength") private var glowMotionStrength = 1.0
     @State private var editing = false
     @State private var showSettings = false
-    /// iPad の向き。中身（上のボタンとグリッド）だけを回す角度と、縦 / 横どちらの配置を出すか
+    /// iPad の向き（アイコンを回す角度と、縦 / 横どちらの配置を出すか）
     @ObservedObject private var canvas = CanvasOrientation.shared
     private let isPad = UIDevice.current.userInterfaceIdiom == .pad
 
-    /// いま使う配置の向き。iPad で回した中身が横長なら横画面の配置。iPhone は常に縦
+    /// いま使う配置の向き。iPad を横に持っていれば横画面の配置。iPhone は常に縦
     private var orientation: BoardOrientation {
         isPad && canvas.isLandscape ? .landscape : .portrait
     }
@@ -68,86 +68,112 @@ struct ContentView: View {
         }
     }
 
-    /// 上のボタンとグリッド（iPhone ではそのまま、iPad では回すキャンバスの中に置く）
+    /// 上の「設定」「編集」ボタン
+    private var topBar: some View {
+        HStack {
+            Button { showSettings = true } label: {
+                Image(systemName: "gearshape").font(.title3).frame(width: 44, height: 44)
+            }
+            .styledCircleGlass(interactive: true)
+            .accessibilityLabel("設定")
+            Spacer()
+            Button { editing.toggle() } label: {
+                Image(systemName: editing ? "checkmark" : "pencil").font(.title3).frame(width: 44, height: 44)
+            }
+            .styledCircleGlass(tint: editing ? tint ?? .accentColor : nil, interactive: true)
+            .accessibilityLabel(editing ? "編集を完了" : "編集")
+        }
+        .padding(.horizontal, 16)
+        .frame(height: Self.topBarHeight)
+    }
+
+    private static let topBarHeight: CGFloat = 56
+
+    /// グリッド（通常モード / 編集モード）
+    @ViewBuilder
+    private var grid: some View {
+        if editing {
+            EditGridView(slots: pageSlots, layout: store.board.layout(for: orientation), allowGroups: true)
+                // 向きが変わったら、編集中の状態（開いている編集画面など）を捨てて作り直す。
+                // 古い向きのマス番号のまま、別の向きの配置へ保存してしまわないようにするため
+                .id(orientation)
+        } else {
+            LauncherGridView(orientation: orientation)
+                // グループを開いている間だけ最前面にして、暗い背景が下のボタンも覆うようにする
+                .zIndex(store.groupLayerOpen ? 1 : 0)
+        }
+    }
+
+    /// iPhone: 上のボタンとグリッド
     private var mainContent: some View {
         VStack(spacing: 0) {
-
-            HStack {
-                Button { showSettings = true } label: {
-                    Image(systemName: "gearshape").font(.title3).frame(width: 44, height: 44)
-                }
-                .styledCircleGlass(interactive: true)
-                .accessibilityLabel("設定")
-                Spacer()
-                Button { editing.toggle() } label: {
-                    Image(systemName: editing ? "checkmark" : "pencil").font(.title3).frame(width: 44, height: 44)
-                }
-                .styledCircleGlass(tint: editing ? tint ?? .accentColor : nil, interactive: true)
-                .accessibilityLabel(editing ? "編集を完了" : "編集")
-            }
-            .padding(.horizontal, 16)
-            .frame(height: 56)
-
-            if editing {
-                EditGridView(slots: pageSlots, layout: store.board.layout(for: orientation), allowGroups: true)
-                    // 向きが変わったら、編集中の状態（開いている編集画面など）を捨てて作り直す。
-                    // 古い向きのマス番号のまま、別の向きの配置へ保存してしまわないようにするため
-                    .id(orientation)
-            } else {
-                LauncherGridView(orientation: orientation)
-                    // グループを開いている間だけ最前面にして、暗い背景が下のボタンも覆うようにする
-                    .zIndex(store.groupLayerOpen ? 1 : 0)
-            }
-
+            topBar
+            grid
             if DockBar.enabled {
                 DockBar(editing: editing)
             }
         }
     }
 
-    /// iPad: iOS の回転のアニメーション（画面全体が回って四隅が黒く見える）の代わりに、中身だけを回す。
-    /// 背景はこの外側にあるので回らない。安全領域は回した向きに合わせて付け直す（`CanvasRotation`）
-    private var rotatingCanvas: some View {
+    @ViewBuilder
+    private var background: some View {
+        if isGlow {
+            GlowBackground()
+        } else {
+            (useCustomBackground ? backgroundColor.color : Color(.systemBackground)).ignoresSafeArea()
+        }
+    }
+
+    /// iPad: グリッドと背景は端末に対して動かさない（`FixedCanvas`）。アイコンだけが持った向きに回り、縦 / 横の配置に入れ替わる。
+    /// 上のボタンはウィンドウ側に置くので、持った向きの上の角へ移る
+    private var padContent: some View {
         GeometryReader { geo in
             let insets = geo.safeAreaInsets
-            let full = CGSize(width: geo.size.width + insets.leading + insets.trailing,
-                              height: geo.size.height + insets.top + insets.bottom)
-            // iOS がウィンドウを回している最中は、ウィンドウの大きさが新しい向きに変わった時点から
-            // 中身を逆向きに回して、前の見た目のまま残す（180° は大きさが変わらないので、すぐに）
-            let counter = canvas.counter.flatMap { c in
-                (full != c.windowSize || CanvasRotation.normalized(c.degrees) == 180) ? c.degrees : nil
+            // ボタンはどの辺の上にも来うるので、グリッドは四辺ともボタンとステータスバーの分を空ける
+            let edge = max(insets.top, insets.bottom, insets.leading, insets.trailing) + Self.topBarHeight
+            ZStack(alignment: .top) {
+                FixedCanvas(content: fixedLayer(edge: edge))
+                    .ignoresSafeArea()
+                topBar
+                    // グループを開いている間は、暗い背景の上に出ないよう隠す
+                    .opacity(store.groupLayerOpen ? 0 : 1)
+                    .allowsHitTesting(!store.groupLayerOpen)
+                    .animation(.easeOut(duration: 0.2), value: store.groupLayerOpen)
             }
-            let degrees = counter ?? canvas.degrees
-            let canvasSize = CanvasRotation.canvasSize(window: full, degrees: degrees)
-            mainContent
-                .padding(CanvasRotation.canvasInsets(insets, degrees: degrees))
-                .environment(\.geodeCanvasSize, canvasSize)
-                .frame(width: canvasSize.width, height: canvasSize.height)
-                .coordinateSpace(name: CanvasRotation.coordinateSpace)
-                .rotationEffect(.degrees(degrees))
-                .frame(width: full.width, height: full.height)
-                // GeometryReader の原点は安全領域の内側なので、画面全体の中央に置き直す
-                .position(x: full.width / 2 - insets.leading, y: full.height / 2 - insets.top)
-                .onAppear { canvas.windowResized(to: full) }
-                .onChange(of: full) { _, size in canvas.windowResized(to: size) }
         }
-        // iOS の回転を受け取る（回転のアニメーションを止め、中身を Geode が回す）
-        .background { RotationHook().frame(width: 0, height: 0) }
+    }
+
+    /// 動かさないキャンバスの中身。別の UIHostingController で描くので、環境の値はここで渡し直す
+    private func fixedLayer(edge: CGFloat) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .topLeading) {
+                background
+                grid
+                    .padding(edge)
+                if SharedStorage.isUITesting {
+                    // UI テスト用の目印: キャンバスの左上の角（端末を縦に持ったときの左上）。回しても画面上で動かないことを確かめる
+                    Rectangle().fill(Color.black.opacity(0.01))
+                        .frame(width: 8, height: 8)
+                        .accessibilityElement()
+                        .accessibilityIdentifier("geode-canvas-origin")
+                }
+            }
+            .environment(\.geodeCanvasSize, geo.size)
+            .coordinateSpace(name: CanvasRotation.coordinateSpace)
+        }
+        .environment(\.geodeIconAngle, canvas.iconDegrees)
+        .environmentObject(store)
+        .tint(tint)
+        .preferredColorScheme(scheme)
     }
 
     var body: some View {
         Group {
             if isPad {
-                rotatingCanvas
+                padContent
             } else {
                 mainContent
-            }
-        }
-        .background {
-            if isGlow {
-                GlowBackground()
-            } else {
-                (useCustomBackground ? backgroundColor.color : Color(.systemBackground)).ignoresSafeArea()
+                    .background { background }
             }
         }
         .tint(tint)
@@ -156,11 +182,7 @@ struct ContentView: View {
         // オンにすると Geode のタッチを優先する（代わりにホームへ戻るには下端を 2 回スワイプする）
         .defersSystemGestures(on: preferBottomTouches ? .bottom : [])
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                store.refreshDirectStates()
-                // 裏にいる間に端末の向きが変わっていても合わせる
-                if isPad { canvas.lockMayHaveChanged() }
-            }
+            if phase == .active { store.refreshDirectStates() }
             updateGlowMotion()
         }
         .onChange(of: uiStyle) { _, _ in updateGlowMotion() }
@@ -215,7 +237,7 @@ struct SettingsView: View {
             set: { newValue in
                 var layout = store.board.layout(for: orientation)
                 layout[keyPath: keyPath] = newValue
-                if !store.applyLayout(layout, for: orientation) {
+                if !store.applyLayout(layout) {
                     message = "アイテムが収まりません。先にいくつか削除してください。"
                 }
             }
@@ -320,9 +342,8 @@ struct SettingsView: View {
                     .disabled(!showLabels)
                     // iPad は画面が広いので、行・列を多くできる
                     if isPad {
-                        // iPad は縦画面と横画面で別の配置を持つ。いまどちらを変えているかを示す
-                        Text(orientation == .landscape ? "横画面の配置を変更しています（縦画面に戻すと縦の配置）"
-                                                       : "縦画面の配置を変更しています（横画面に回すと横の配置）")
+                        // iPad: 行と列は縦横共通、アイコンの並びは縦と横で別
+                        Text("行と列は縦画面と横画面で共通です。アイコンの並びは縦と横で別々に編集できます。")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }

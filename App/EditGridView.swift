@@ -29,6 +29,8 @@ struct EditGridView: View {
     @State private var target: EditorTarget?
     @State private var dragFrom: Int?
     @State private var dragOffset: CGSize = .zero
+    /// iPad: グリッドは端末に対して動かさず、アイコンだけを持った向きに回す（iPhone では 0）
+    @Environment(\.geodeIconAngle) private var iconAngle
 
     /// 空きマスの「＋」タイルの色
     private static let addColor = Theme.addColor
@@ -75,6 +77,7 @@ struct EditGridView: View {
     private func cell(_ slot: Int, metrics: GridMetrics) -> some View {
         if slot == reservedSlot {
             TileView(item: reservedItem, metrics: metrics).opacity(0.45)
+                .rotationEffect(.degrees(iconAngle))
         } else if let item = slots[slot] {
             TileView(item: item, metrics: metrics)
                 .overlay(alignment: .topLeading) {
@@ -88,6 +91,8 @@ struct EditGridView: View {
                     }
                     .offset(x: -8, y: -8)
                 }
+                // iPad: アイコンだけを持った向きに回す（ドラッグの移動量は回さない）
+                .rotationEffect(.degrees(iconAngle))
                 .offset(dragFrom == slot ? dragOffset : .zero)
                 .scaleEffect(dragFrom == slot ? 1.08 : 1)
                 .contentShape(Rectangle())
