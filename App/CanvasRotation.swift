@@ -6,8 +6,10 @@ import UIKit
 /// - アイコンだけが、持った向きで読める向きに回り、縦用 / 横用の配置へ入れ替わる
 /// - 上の「設定」「編集」ボタンは、持った向きの上の角へ移る（ウィンドウと一緒に iOS が回す）
 ///
-/// 仕組み: ウィンドウは iOS の通常の回転に任せる。グリッドと背景は UIKit のビューに入れ、iOS の回転と同じアニメーションの中で
-/// 逆向きに回す（カメラのプレビューと同じ方法）。そのため回転中も画面上の位置が変わらず、四隅も背景で覆われる。
+/// 仕組み: ウィンドウの向きは iOS が変えるが、回転のアニメーションは止めて一瞬で切り替える
+/// （アニメーションさせると、iPadOS 26 ではウィンドウごと回る様子が見え、中で逆に回してもグリッドが傾いて見えた。CI の録画で確認）。
+/// グリッドと背景は UIKit のビューに入れ、ウィンドウの回転の逆向きに回して置くので、切り替わっても画面上の位置が変わらない。
+/// 切り替わった直後に、アイコンだけを Geode のアニメーションで持った向きへ回し、縦 / 横の並びへ動かす。
 /// シート・キーボード・Split View は iOS の通常どおり
 enum CanvasRotation {
     /// 動かさないキャンバスの座標空間の名前（グループの背景がキャンバス全体を覆うために使う）
@@ -94,18 +96,6 @@ final class CanvasOrientation: ObservableObject {
 
     private init() {}
 
-    /// iOS がウィンドウを回し始めた。ウィンドウ（上のボタン）と同じ時間で、同じ向きにアイコンを回し、配置も同時に切り替える
-    func windowWillRotate(from current: Double, by delta: Double, duration: TimeInterval) {
-        // 90° 単位に丸める（180° のときもウィンドウと同じ向きに回るよう、符号は残す）
-        let step = (delta / 90).rounded() * 90
-        let landscape = CanvasRotation.isQuarterTurn(current + step)
-        withAnimation(.easeInOut(duration: max(duration, 0.1))) {
-            iconDegrees += step
-            isLandscape = landscape
-        }
-        known = true
-    }
-
     /// ウィンドウの向きが分かった・変わった。最初の 1 回はアニメーションしない
     func windowRotated(to degrees: Double) {
         let next = CanvasRotation.nextAngle(current: iconDegrees, target: CanvasRotation.normalized(degrees))
@@ -144,8 +134,6 @@ final class FixedCanvasController<Content: View>: UIViewController {
     private var transitioning = false
     /// UI テストの比較用（-GeodeSystemRotation）: 逆向きに回さず、iOS の回転のまま（四隅が黒く見える従来の動き）
     private let systemRotation = CommandLine.arguments.contains("-GeodeSystemRotation")
-    /// 試験中の方式（-GeodeNoRotationAnimation）: iOS の回転のアニメーションも止め、ウィンドウを一瞬で切り替える
-    private let noRotationAnimation = CommandLine.arguments.contains("-GeodeNoRotationAnimation")
 
     init(rootView: Content) {
         host = UIHostingController(rootView: rootView)
@@ -181,12 +169,8 @@ final class FixedCanvasController<Content: View>: UIViewController {
         place(windowDegrees: windowDegrees)
     }
 
-    /// いま置いているウィンドウの角度
-    private var placedDegrees: Double = 0
-
     /// 端末を縦に持ったときの大きさで描き、ウィンドウの回転の逆向きに回して中央に置く
     private func place(windowDegrees: Double) {
-        placedDegrees = windowDegrees
         let size = CanvasRotation.fixedSize(window: view.bounds.size, windowDegrees: windowDegrees)
         host.view.transform = .identity
         host.view.bounds = CGRect(origin: .zero, size: size)
@@ -204,27 +188,22 @@ final class FixedCanvasController<Content: View>: UIViewController {
             return
         }
         transitioning = true
-        if noRotationAnimation { UIView.setAnimationsEnabled(false) }
-        // アイコンの向きと配置は、ウィンドウが回り始めるのと同時に、同じ時間をかけて切り替える。
-        // 回転の準備の最中に SwiftUI の状態を変えないよう、次の周回で始める
-        let from = placedDegrees, duration = coordinator.transitionDuration
-        DispatchQueue.main.async {
-            CanvasOrientation.shared.windowWillRotate(from: from, by: delta, duration: duration)
-        }
+        // iOS の回転のアニメーションを止め、ウィンドウを一瞬で切り替える
+        UIView.setAnimationsEnabled(false)
         coordinator.animate(alongsideTransition: { [weak self] _ in
             guard let self else { return }
-            // iOS がウィンドウを回すのと同じアニメーションの中で、同じ量だけ逆に回す（画面上では動かない）。
+            // ウィンドウを回すのと同じ量だけ逆に回す（画面上では動かない）。
             // 180° のときに回る向きが定まるよう、ごくわずかにずらす
             let layer = self.host.view.layer
             let current = (layer.value(forKeyPath: "transform.rotation.z") as? NSNumber)?.doubleValue ?? 0
             layer.setValue(current - delta * .pi / 180 + 0.0001, forKeyPath: "transform.rotation.z")
             self.host.view.center = CGPoint(x: size.width / 2, y: size.height / 2)
         }, completion: { [weak self] _ in
-            if self?.noRotationAnimation == true { UIView.setAnimationsEnabled(true) }
+            UIView.setAnimationsEnabled(true)
             guard let self else { return }
             self.transitioning = false
-            // ずらした分と誤差をなくし、ウィンドウの実際の向きで置き直す（アイコンの向きと配置は回り始めに切り替え済み。
-            // 食い違っていればここで直す）
+            // ずらした分と誤差をなくし、ウィンドウの実際の向きで置き直す。
+            // アイコンの向きと縦 / 横の並びは、ここで（アニメーションを戻した後に）Geode のアニメーションで切り替える
             self.place(windowDegrees: self.windowDegrees)
         })
     }

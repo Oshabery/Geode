@@ -129,19 +129,6 @@ final class GeodeUITests: XCTestCase {
         XCTAssertGreaterThan(origin.frame.midY, window.height - 20)
     }
 
-    /// 試験中の方式（-GeodeNoRotationAnimation: iOS の回転のアニメーションも止める）。録画で見比べる。キャンバスの角の位置だけ確かめる
-    func testPadRotationWithoutSystemAnimation() throws {
-        XCUIDevice.shared.orientation = .portrait
-        let app = launch(["-GeodeSampleBoard", "-GeodeNoRotationAnimation"])
-        try padOnly(app)
-        let origin = app.otherElements["geode-canvas-origin"]
-        XCTAssertTrue(origin.waitForExistence(timeout: 10))
-        sleep(2)
-        rotate(to: .landscapeLeft, "noanimation")
-        waitForLandscapeWindow(app)
-        XCTAssertGreaterThan(origin.frame.midY, app.windows.firstMatch.frame.height - 20)
-    }
-
     /// 比較用: 以前と同じ iOS の回転のまま（-GeodeSystemRotation）。録画で四隅が黒く見えるかを見比べる。判定はしない
     func testPadSystemRotationBaseline() throws {
         XCUIDevice.shared.orientation = .portrait
