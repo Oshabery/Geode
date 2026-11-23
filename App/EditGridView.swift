@@ -89,6 +89,7 @@ struct EditGridView: View {
                             .frame(width: 26, height: 26)
                             .styledCircleGlass(interactive: true)
                     }
+                    .accessibilityLabel("\(item.name)を削除")
                     .offset(x: -8, y: -8)
                 }
                 // iPad: アイコンだけを持った向きに回す（ドラッグの移動量は回さない）

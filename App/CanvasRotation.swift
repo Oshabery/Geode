@@ -92,25 +92,20 @@ final class CanvasOrientation: ObservableObject {
     /// 横画面の配置を出すか（ウィンドウが端末に対して 90° 回っているか）
     @Published private(set) var isLandscape = false
 
-    private var known = false
-
     private init() {}
 
-    /// ウィンドウの向きが分かった・変わった。最初の 1 回はアニメーションしない
+    /// ウィンドウの向きが分かった・変わった。アイコンの向きと縦 / 横の並びを、画面の切り替わりと同時に一瞬で変える
+    /// （アニメーションさせると、画面より遅れて回って見えるため。ユーザーの指定）
     func windowRotated(to degrees: Double) {
         let next = CanvasRotation.nextAngle(current: iconDegrees, target: CanvasRotation.normalized(degrees))
         let landscape = CanvasRotation.isQuarterTurn(degrees)
-        guard next != iconDegrees || landscape != isLandscape else { known = true; return }
-        if known {
-            withAnimation(Self.animation) {
-                iconDegrees = next
-                isLandscape = landscape
-            }
-        } else {
+        guard next != iconDegrees || landscape != isLandscape else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
             iconDegrees = next
             isLandscape = landscape
         }
-        known = true
     }
 }
 
@@ -130,7 +125,7 @@ struct FixedCanvas<Content: View>: UIViewControllerRepresentable {
 
 final class FixedCanvasController<Content: View>: UIViewController {
     let host: UIHostingController<Content>
-    /// iOS の回転アニメーションの最中（このあいだは逆向きの回転を iOS のアニメーションに任せる）
+    /// iOS がウィンドウを回している最中（置き直しは回転の処理の中で行う）
     private var transitioning = false
     /// UI テストの比較用（-GeodeSystemRotation）: 逆向きに回さず、iOS の回転のまま（四隅が黒く見える従来の動き）
     private let systemRotation = CommandLine.arguments.contains("-GeodeSystemRotation")
@@ -163,6 +158,9 @@ final class FixedCanvasController<Content: View>: UIViewController {
         return CanvasRotation.degrees(ofInterface: scene.effectiveGeometry.interfaceOrientation)
     }
 
+    /// いま置いているウィンドウの角度
+    private var placedDegrees: Double = 0
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         guard !transitioning else { return }
@@ -171,12 +169,53 @@ final class FixedCanvasController<Content: View>: UIViewController {
 
     /// 端末を縦に持ったときの大きさで描き、ウィンドウの回転の逆向きに回して中央に置く
     private func place(windowDegrees: Double) {
+        placedDegrees = windowDegrees
         let size = CanvasRotation.fixedSize(window: view.bounds.size, windowDegrees: windowDegrees)
         host.view.transform = .identity
         host.view.bounds = CGRect(origin: .zero, size: size)
         host.view.center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
         host.view.transform = CGAffineTransform(rotationAngle: -windowDegrees * .pi / 180)
         CanvasOrientation.shared.windowRotated(to: windowDegrees)
+    }
+
+    // MARK: 回転のアニメーションを止める
+
+    /// 止めたアニメーションを、回転が始まらなかったときに戻すための予約
+    private var restoreAnimations: DispatchWorkItem?
+    private var observingDevice = false
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard !systemRotation, !observingDevice else { return }
+        observingDevice = true
+        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+        NotificationCenter.default.addObserver(self, selector: #selector(deviceOrientationChanged),
+                                               name: UIDevice.orientationDidChangeNotification, object: nil)
+    }
+
+    /// 端末の向きが変わった（iOS が画面を回し始めるより前に届く）。ここで先にアニメーションを止めておくと、
+    /// 回転の最初の 1 コマから止まる（回転の通知を受けてからでは、傾いた画面が一瞬見えていた）
+    @objc private func deviceOrientationChanged() {
+        guard let target = Self.interfaceOrientation(for: UIDevice.current.orientation),
+              let scene = view.window?.windowScene,
+              target != scene.effectiveGeometry.interfaceOrientation else { return }
+        UIView.setAnimationsEnabled(false)
+        // 実際には回らなかったとき（向きのロック中など）のために、少し後に必ず戻す
+        restoreAnimations?.cancel()
+        let restore = DispatchWorkItem { UIView.setAnimationsEnabled(true) }
+        restoreAnimations = restore
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: restore)
+    }
+
+    /// 端末の向き → その向きで iOS が回す画面の向き（端末の landscapeLeft は画面の landscapeRight）
+    private static func interfaceOrientation(for device: UIDeviceOrientation) -> UIInterfaceOrientation? {
+        switch device {
+        case .portrait: return .portrait
+        case .portraitUpsideDown: return .portraitUpsideDown
+        case .landscapeLeft: return .landscapeRight
+        case .landscapeRight: return .landscapeLeft
+        default: return nil
+        }
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -188,22 +227,19 @@ final class FixedCanvasController<Content: View>: UIViewController {
             return
         }
         transitioning = true
-        // iOS の回転のアニメーションを止め、ウィンドウを一瞬で切り替える
+        // iOS の回転のアニメーションを止め、ウィンドウを一瞬で切り替える（端末の向きの通知で止めていなかったとき用）
         UIView.setAnimationsEnabled(false)
+        let newDegrees = CanvasRotation.normalized(placedDegrees + delta)
         coordinator.animate(alongsideTransition: { [weak self] _ in
             guard let self else { return }
-            // ウィンドウを回すのと同じ量だけ逆に回す（画面上では動かない）。
-            // 180° のときに回る向きが定まるよう、ごくわずかにずらす
-            let layer = self.host.view.layer
-            let current = (layer.value(forKeyPath: "transform.rotation.z") as? NSNumber)?.doubleValue ?? 0
-            layer.setValue(current - delta * .pi / 180 + 0.0001, forKeyPath: "transform.rotation.z")
-            self.host.view.center = CGPoint(x: size.width / 2, y: size.height / 2)
+            // ウィンドウを回すのと同じ量だけ逆に回す（画面上では動かない）
+            self.place(windowDegrees: newDegrees)
         }, completion: { [weak self] _ in
+            self?.restoreAnimations?.cancel()
             UIView.setAnimationsEnabled(true)
             guard let self else { return }
             self.transitioning = false
-            // ずらした分と誤差をなくし、ウィンドウの実際の向きで置き直す。
-            // アイコンの向きと縦 / 横の並びは、ここで（アニメーションを戻した後に）Geode のアニメーションで切り替える
+            // ウィンドウの実際の向きで置き直す（食い違っていればここで直る）
             self.place(windowDegrees: self.windowDegrees)
         })
     }

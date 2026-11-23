@@ -129,6 +129,30 @@ final class GeodeUITests: XCTestCase {
         XCTAssertGreaterThan(origin.frame.midY, window.height - 20)
     }
 
+    /// 縦と横で別々の並び: 横に持って編集した変更は横だけに効き、縦の並びは変わらない
+    func testPadLandscapeArrangementIsSeparate() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = launch(["-GeodeSampleBoard"])
+        try padOnly(app)
+        waitForLandscapeWindow(app)
+        XCTAssertTrue(app.staticTexts["Alpha"].waitForExistence(timeout: 5))
+
+        app.buttons["編集"].tap()
+        XCTAssertTrue(app.staticTexts["横画面の並びを編集中"].waitForExistence(timeout: 5))
+        app.buttons["Alphaを削除"].tap()
+        capture(app, "09-pad-edit-landscape")
+        app.buttons["編集を完了"].tap()
+        XCTAssertFalse(app.staticTexts["Alpha"].waitForExistence(timeout: 2), "横の並びから消えた")
+
+        XCUIDevice.shared.orientation = .portrait
+        let window = app.windows.firstMatch
+        let portrait = expectation(for: NSPredicate { _, _ in window.frame.height > window.frame.width },
+                                   evaluatedWith: nil)
+        wait(for: [portrait], timeout: 5)
+        XCTAssertTrue(app.staticTexts["Alpha"].waitForExistence(timeout: 5), "縦の並びには残っている")
+        capture(app, "10-pad-portrait-after-landscape-edit")
+    }
+
     /// 比較用: 以前と同じ iOS の回転のまま（-GeodeSystemRotation）。録画で四隅が黒く見えるかを見比べる。判定はしない
     func testPadSystemRotationBaseline() throws {
         XCUIDevice.shared.orientation = .portrait

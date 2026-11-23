@@ -77,6 +77,16 @@ struct ContentView: View {
             .styledCircleGlass(interactive: true)
             .accessibilityLabel("設定")
             Spacer()
+            if isPad && editing {
+                // iPad: どちらの向きの並びを編集しているかを示す（縦と横で別々の並び）
+                Text(orientation == .landscape ? "横画面の並びを編集中" : "縦画面の並びを編集中")
+                    .font(.footnote.weight(.semibold))
+                    .padding(.horizontal, 14)
+                    .frame(height: 32)
+                    .glass(in: Capsule())
+                    .accessibilityIdentifier("geode-editing-orientation")
+                Spacer()
+            }
             Button { editing.toggle() } label: {
                 Image(systemName: editing ? "checkmark" : "pencil").font(.title3).frame(width: 44, height: 44)
             }

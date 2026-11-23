@@ -546,8 +546,6 @@ struct LauncherGridView: View {
                 )
             }
             .animation(openGroup != nil ? Self.openAnimation : Self.closeAnimation, value: openGroup?.id)
-            // 縦と横の配置が切り替わるとき、アイコンをなめらかに新しい位置へ動かす
-            .animation(.spring(duration: 0.45, bounce: 0.1), value: orientation)
             .animation(.easeOut(duration: 0.1), value: highlighted)
         }
         // 開いている間は ContentView がこのビューを最前面に描く（背景が下のボタンも覆えるように）
