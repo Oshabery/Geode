@@ -47,7 +47,16 @@ struct EditGridView: View {
                     cell(slot, metrics: metrics)
                         .frame(width: metrics.cellSize.width, height: metrics.cellSize.height, alignment: .top)
                         .position(metrics.center(slot))
-                        .zIndex(dragFrom == slot ? 1 : 0)
+                        .zIndex(dragFrom == slot ? 2 : 0)
+                }
+                // 削除ボタン（×）はすべてのタイルより上の層に置く。タイルの中に置くと、iPad でアイコンを回したとき
+                // × が隣のマスにかかり、隣のタイルのタップが先に反応していた
+                ForEach(slots.keys.sorted(), id: \.self) { slot in
+                    if slot != reservedSlot, slot != dragFrom, let item = slots[slot] {
+                        deleteButton(slot, item)
+                            .position(deleteButtonCenter(slot, metrics: metrics))
+                            .zIndex(1)
+                    }
                 }
             }
             .coordinateSpace(name: "editgrid")
@@ -73,6 +82,27 @@ struct EditGridView: View {
         }
     }
 
+    private func deleteButton(_ slot: Int, _ item: LaunchItem) -> some View {
+        Button {
+            slots[slot] = nil
+        } label: {
+            Image(systemName: "xmark")
+                .font(.caption.bold())
+                .frame(width: 26, height: 26)
+                .styledCircleGlass(interactive: true)
+        }
+        .accessibilityLabel("\(item.name)を削除")
+    }
+
+    /// × の中心: アイコンの左上の角から少し外（持った向きで見た左上）。iPad でアイコンを回しているときは、同じだけ回した位置
+    private func deleteButtonCenter(_ slot: Int, metrics: GridMetrics) -> CGPoint {
+        let center = metrics.center(slot)
+        // マスの中心から見た、回す前の位置（タイルの左上から 8pt 外にはみ出した 26pt の丸の中心）
+        let x = -metrics.cellSize.width / 2 + 5, y = -metrics.cellSize.height / 2 + 5
+        let a = iconAngle * .pi / 180
+        return CGPoint(x: center.x + x * cos(a) - y * sin(a), y: center.y + x * sin(a) + y * cos(a))
+    }
+
     @ViewBuilder
     private func cell(_ slot: Int, metrics: GridMetrics) -> some View {
         if slot == reservedSlot {
@@ -80,18 +110,6 @@ struct EditGridView: View {
                 .rotationEffect(.degrees(iconAngle))
         } else if let item = slots[slot] {
             TileView(item: item, metrics: metrics)
-                .overlay(alignment: .topLeading) {
-                    Button {
-                        slots[slot] = nil
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.caption.bold())
-                            .frame(width: 26, height: 26)
-                            .styledCircleGlass(interactive: true)
-                    }
-                    .accessibilityLabel("\(item.name)を削除")
-                    .offset(x: -8, y: -8)
-                }
                 // iPad: アイコンだけを持った向きに回す（ドラッグの移動量は回さない）
                 .rotationEffect(.degrees(iconAngle))
                 .offset(dragFrom == slot ? dragOffset : .zero)

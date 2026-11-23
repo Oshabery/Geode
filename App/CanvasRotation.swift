@@ -161,9 +161,20 @@ final class FixedCanvasController<Content: View>: UIViewController {
     /// いま置いているウィンドウの角度
     private var placedDegrees: Double = 0
 
+    /// iOS がウィンドウを回している最中の、回った後の角度
+    private var pendingDegrees: Double?
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        guard !transitioning else { return }
+        if transitioning {
+            // ウィンドウが実際に新しい向きの大きさになった瞬間（同じコマ）に、キャンバスとアイコンを切り替える。
+            // 回転のアニメーションを止めると、ウィンドウが切り替わるのは回転の最初とは限らないため、大きさの変化で判断する
+            guard let pending = pendingDegrees,
+                  CanvasRotation.isQuarterTurn(pending - placedDegrees),
+                  (view.bounds.width > view.bounds.height) == CanvasRotation.isQuarterTurn(pending) else { return }
+            place(windowDegrees: pending)
+            return
+        }
         place(windowDegrees: windowDegrees)
     }
 
@@ -229,17 +240,15 @@ final class FixedCanvasController<Content: View>: UIViewController {
         transitioning = true
         // iOS の回転のアニメーションを止め、ウィンドウを一瞬で切り替える（端末の向きの通知で止めていなかったとき用）
         UIView.setAnimationsEnabled(false)
-        let newDegrees = CanvasRotation.normalized(placedDegrees + delta)
-        coordinator.animate(alongsideTransition: { [weak self] _ in
-            guard let self else { return }
-            // ウィンドウを回すのと同じ量だけ逆に回す（画面上では動かない）
-            self.place(windowDegrees: newDegrees)
-        }, completion: { [weak self] _ in
+        // 回った後の角度。キャンバスはウィンドウの大きさが変わった瞬間に、この角度の逆向きに置き直す（viewDidLayoutSubviews）
+        pendingDegrees = CanvasRotation.normalized(placedDegrees + delta)
+        coordinator.animate(alongsideTransition: nil, completion: { [weak self] _ in
             self?.restoreAnimations?.cancel()
             UIView.setAnimationsEnabled(true)
             guard let self else { return }
             self.transitioning = false
-            // ウィンドウの実際の向きで置き直す（食い違っていればここで直る）
+            self.pendingDegrees = nil
+            // ウィンドウの実際の向きで置き直す（180° のように大きさが変わらないときや、食い違っていたときはここで直る）
             self.place(windowDegrees: self.windowDegrees)
         })
     }
