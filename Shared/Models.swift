@@ -219,8 +219,23 @@ enum SharedStorage {
     static func iconURL(_ file: String) -> URL { iconsDir.appendingPathComponent(file) }
 
     static func loadBoard() -> Board {
+        // UI テスト用の見本の盤面（-GeodeSampleBoard）: 縦と横で並びの違うアイコンを置く
+        if isUITesting, ProcessInfo.processInfo.arguments.contains("-GeodeSampleBoard") {
+            return sampleBoard
+        }
         guard let data = try? Data(contentsOf: boardURL),
               let board = try? JSONDecoder().decode(Board.self, from: data) else { return Board() }
+        return board
+    }
+
+    private static var sampleBoard: Board {
+        func item(_ name: String, _ symbol: String) -> LaunchItem {
+            LaunchItem(kind: .action, name: name, urlString: "geode://brightness", symbol: symbol)
+        }
+        let a = item("Alpha", "star.fill"), b = item("Bravo", "heart.fill"), c = item("Charlie", "bolt.fill")
+        var board = Board()
+        board.slots = [0: a, 1: b, 2: c]
+        board.setSlots([15: a, 16: b, 17: c], for: .landscape)
         return board
     }
 

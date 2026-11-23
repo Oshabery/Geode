@@ -94,6 +94,18 @@ final class CanvasOrientation: ObservableObject {
 
     private init() {}
 
+    /// iOS がウィンドウを回し始めた。ウィンドウ（上のボタン）と同じ時間で、同じ向きにアイコンを回し、配置も同時に切り替える
+    func windowWillRotate(from current: Double, by delta: Double, duration: TimeInterval) {
+        // 90° 単位に丸める（180° のときもウィンドウと同じ向きに回るよう、符号は残す）
+        let step = (delta / 90).rounded() * 90
+        let landscape = CanvasRotation.isQuarterTurn(current + step)
+        withAnimation(.easeInOut(duration: max(duration, 0.1))) {
+            iconDegrees += step
+            isLandscape = landscape
+        }
+        known = true
+    }
+
     /// ウィンドウの向きが分かった・変わった。最初の 1 回はアニメーションしない
     func windowRotated(to degrees: Double) {
         let next = CanvasRotation.nextAngle(current: iconDegrees, target: CanvasRotation.normalized(degrees))
@@ -167,8 +179,12 @@ final class FixedCanvasController<Content: View>: UIViewController {
         place(windowDegrees: windowDegrees)
     }
 
+    /// いま置いているウィンドウの角度
+    private var placedDegrees: Double = 0
+
     /// 端末を縦に持ったときの大きさで描き、ウィンドウの回転の逆向きに回して中央に置く
     private func place(windowDegrees: Double) {
+        placedDegrees = windowDegrees
         let size = CanvasRotation.fixedSize(window: view.bounds.size, windowDegrees: windowDegrees)
         host.view.transform = .identity
         host.view.bounds = CGRect(origin: .zero, size: size)
@@ -186,6 +202,9 @@ final class FixedCanvasController<Content: View>: UIViewController {
             return
         }
         transitioning = true
+        // アイコンの向きと配置は、ウィンドウが回り始めるのと同時に、同じ時間をかけて切り替える
+        CanvasOrientation.shared.windowWillRotate(from: placedDegrees, by: delta,
+                                                  duration: coordinator.transitionDuration)
         coordinator.animate(alongsideTransition: { [weak self] _ in
             guard let self else { return }
             // iOS がウィンドウを回すのと同じアニメーションの中で、同じ量だけ逆に回す（画面上では動かない）。
@@ -197,7 +216,8 @@ final class FixedCanvasController<Content: View>: UIViewController {
         }, completion: { [weak self] _ in
             guard let self else { return }
             self.transitioning = false
-            // ずらした分と誤差をなくし、ウィンドウの実際の向きで置き直す（アイコンの向きと配置もここで切り替わる）
+            // ずらした分と誤差をなくし、ウィンドウの実際の向きで置き直す（アイコンの向きと配置は回り始めに切り替え済み。
+            // 食い違っていればここで直す）
             self.place(windowDegrees: self.windowDegrees)
         })
     }

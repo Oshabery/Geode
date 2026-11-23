@@ -81,13 +81,15 @@ final class GeodeUITests: XCTestCase {
     /// 上の「設定」ボタンは持った向きの左上へ移り、押せる
     func testPadGridStaysFixedWhenRotated() throws {
         XCUIDevice.shared.orientation = .portrait
-        let app = launch()
+        let app = launch(["-GeodeSampleBoard"])
         try padOnly(app)
         let origin = app.otherElements["geode-canvas-origin"]
         XCTAssertTrue(origin.waitForExistence(timeout: 10))
         sleep(1)
         XCTAssertLessThan(origin.frame.midX, 20)
         XCTAssertLessThan(origin.frame.midY, 20)
+        let alphaBefore = app.staticTexts["Alpha"].frame
+        print("縦: Alpha \(alphaBefore)")
         capture(app, "06-pad-portrait")
 
         rotate(to: .landscapeLeft, "fixed")
@@ -98,6 +100,11 @@ final class GeodeUITests: XCTestCase {
         print("横: ウィンドウ \(window.size)、キャンバスの角 \(origin.frame)、設定ボタン \(app.buttons["設定"].frame)")
         XCTAssertLessThan(origin.frame.midX, 20, "キャンバスの角は横持ちで見て左下に残る")
         XCTAssertGreaterThan(origin.frame.midY, window.height - 20, "キャンバスの角は横持ちで見て左下に残る")
+
+        // 見本の盤面: 縦は 0〜2 番のマス、横は 15〜17 番のマスにアイコンがある（横は縦と別の並び）
+        let alpha = app.staticTexts["Alpha"]
+        XCTAssertTrue(alpha.exists)
+        print("横: Alpha \(alpha.frame)")
 
         let gear = app.buttons["設定"]
         XCTAssertLessThan(gear.frame.midX, 120, "設定ボタンは持った向きの左上")
