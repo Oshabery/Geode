@@ -139,11 +139,11 @@ final class CanvasOrientation: ObservableObject {
     /// 最後に消し始めた時刻
     private(set) var hideStarted = Date.distantPast
 
-    /// iOS がウィンドウを回し始める。アイコンをフェードしながら小さくして消す（出てくるときと同じ時間）
+    /// iOS がウィンドウを回し始める。アイコンをぼかしながら小さくして消す（出てくるときと同じ時間。動きは `OrientationReveal`）
     func hideIcons() {
         guard !iconsHidden else { return }
         hideStarted = Date()
-        withAnimation(.easeInOut(duration: Self.hideDuration)) { iconsHidden = true }
+        iconsHidden = true
     }
 
     /// 消え終わるまでの残り時間（秒）
@@ -280,8 +280,10 @@ final class FixedCanvasController<Content: View>: UIViewController {
 
 // MARK: アイコンの出直し
 
-/// 向きが変わったとき、アイコンを一度消してから、ぷよっと弾むように出す（ユーザーの指定）。
-/// 出だしと終わりをなめらかにしたカーブ（イーズインアウト）で、横に広がる → 縦に伸びる → 落ち着く、を繰り返して止まる。
+/// 向きが変わったとき、アイコンを一度消してから出し直す（ユーザーの指定: Apple らしい動き）。
+/// iOS 26 の Liquid Glass のように、ぼけた状態から焦点が合いながら現れる（SwiftUI の blurReplace と同じ考え方）。
+/// 大きさは Apple 標準のばね（`.bouncy`）で、少しだけ行き過ぎて戻る。消えるときはその逆（ぼけながら少し小さくなり、
+/// 弾まずに消える `.smooth`）。出るのも消えるのも同じ時間（`duration`）。
 /// 縦と横で並びも向きも変わるので、動かして見せるより、いったん消して出し直す方が自然に見えるため
 struct OrientationReveal: ViewModifier {
     /// 変わるとアニメーションが始まる番号（`geodeRevealToken`）
@@ -292,13 +294,14 @@ struct OrientationReveal: ViewModifier {
     var hidden = false
 
     struct Value {
-        var scaleX = 1.0
-        var scaleY = 1.0
+        var scale = 1.0
+        var blur = 0.0
         var opacity = 1.0
     }
 
-    /// 消えている間の大きさ
-    static let hiddenScale = 0.35
+    /// 消えている間の大きさ・ぼかし
+    static let hiddenScale = 0.8
+    static let hiddenBlur = 8.0
     /// 出てくるのにかかる時間（秒）。消えるときも同じ時間をかける（ユーザーの指定）
     static let duration = 0.26
     /// 消えたままでいる時間（秒）。回転が終わってから少しおいて出る
@@ -307,38 +310,35 @@ struct OrientationReveal: ViewModifier {
     func body(content: Content) -> some View {
         content.keyframeAnimator(initialValue: Value(), trigger: token) { view, value in
             view
-                .scaleEffect(x: value.scaleX, y: value.scaleY)
+                .scaleEffect(value.scale)
+                .blur(radius: value.blur)
                 .opacity(value.opacity)
         } keyframes: { _ in
             let wait = Self.hold + delay
+            KeyframeTrack(\.scale) {
+                MoveKeyframe(Self.hiddenScale)
+                LinearKeyframe(Self.hiddenScale, duration: wait)
+                // Apple 標準の弾むばね。少しだけ大きくなりすぎてから落ち着く
+                SpringKeyframe(1.0, duration: Self.duration, spring: .bouncy(duration: Self.duration, extraBounce: 0.05))
+            }
+            KeyframeTrack(\.blur) {
+                MoveKeyframe(Self.hiddenBlur)
+                LinearKeyframe(Self.hiddenBlur, duration: wait)
+                SpringKeyframe(0, duration: Self.duration, spring: .smooth(duration: Self.duration))
+            }
             KeyframeTrack(\.opacity) {
                 MoveKeyframe(0)
                 LinearKeyframe(0, duration: wait)
-                CubicKeyframe(1, duration: 0.08)
-            }
-            KeyframeTrack(\.scaleX) {
-                MoveKeyframe(Self.hiddenScale)
-                LinearKeyframe(Self.hiddenScale, duration: wait)
-                CubicKeyframe(1.14, duration: 0.085)   // 横にふくらむ
-                CubicKeyframe(0.93, duration: 0.06)
-                CubicKeyframe(1.03, duration: 0.055)
-                CubicKeyframe(1.0, duration: 0.06)
-            }
-            KeyframeTrack(\.scaleY) {
-                MoveKeyframe(Self.hiddenScale)
-                LinearKeyframe(Self.hiddenScale, duration: wait)
-                CubicKeyframe(0.88, duration: 0.085)   // 縦はつぶれる
-                CubicKeyframe(1.07, duration: 0.06)
-                CubicKeyframe(0.98, duration: 0.055)
-                CubicKeyframe(1.0, duration: 0.06)
+                SpringKeyframe(1, duration: Self.duration * 0.7, spring: .smooth(duration: Self.duration * 0.7))
             }
         }
-        // 消えるとき: フェードしながら小さくなる（出てくるときの逆、同じ時間）。出てくるときはキーフレームに任せるので、
-        // 隠すのをやめる変化にはアニメーションを付けない。キャンバスは別の UIHostingController の中にあり、
+        // 消えるとき: ぼけながら少し小さくなり、弾まずに消える（出てくるときの逆、同じ時間）。出てくるときはキーフレームに
+        // 任せるので、隠すのをやめる変化にはアニメーションを付けない。キャンバスは別の UIHostingController の中にあり、
         // 外の withAnimation が届かないので、ここでアニメーションを付ける
         .scaleEffect(hidden ? Self.hiddenScale : 1)
+        .blur(radius: hidden ? Self.hiddenBlur : 0)
         .opacity(hidden ? 0 : 1)
-        .animation(hidden ? .easeInOut(duration: Self.duration) : nil, value: hidden)
+        .animation(hidden ? .smooth(duration: Self.duration) : nil, value: hidden)
     }
 
     /// マスごとの遅れ: グリッドの中央から離れるほど少し遅らせる（最大 0.06 秒）
