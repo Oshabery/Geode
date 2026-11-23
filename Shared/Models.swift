@@ -233,9 +233,11 @@ enum SharedStorage {
             LaunchItem(kind: .action, name: name, urlString: "geode://brightness", symbol: symbol)
         }
         let a = item("Alpha", "star.fill"), b = item("Bravo", "heart.fill"), c = item("Charlie", "bolt.fill")
+        let d = item("Delta", "leaf.fill"), e = item("Echo", "moon.fill")
         var board = Board()
-        board.slots = [0: a, 1: b, 2: c]
-        board.setSlots([15: a, 16: b, 17: c], for: .landscape)
+        // 縦だけにあるアイコン（Delta）と横だけにあるアイコン（Echo）も置く（並びの切り替えで新しく作られるアイコンの確認用）
+        board.slots = [0: a, 1: b, 2: c, 7: d]
+        board.setSlots([15: a, 16: b, 17: c, 10: e], for: .landscape)
         return board
     }
 

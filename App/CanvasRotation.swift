@@ -241,8 +241,10 @@ final class FixedCanvasController<Content: View>: UIViewController {
             self.transitioning = false
             // ずらした分と誤差をなくし、ウィンドウの実際の向きで置き直す（アイコンの向きと縦 / 横の並びもここで変わる。隠したまま）
             self.place(windowDegrees: self.windowDegrees)
-            // アニメーションを戻した後、次の周回でアイコンを出し直す
-            DispatchQueue.main.async { CanvasOrientation.shared.revealIcons() }
+            // アニメーションを戻した後、少しおいてからアイコンを出し直す。新しい並びで新しく作られるアイコン
+            // （縦と横で置き場所の違うアイコン、作り直される編集画面）が先に画面に作られてから始めないと、
+            // それらのアイコンだけ動かずに出てしまう（ユーザーの指摘）
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { CanvasOrientation.shared.revealIcons() }
         })
     }
 }
@@ -269,7 +271,7 @@ struct OrientationReveal: ViewModifier {
     /// 消えている間の大きさ
     static let hiddenScale = 0.35
     /// 消えたままでいる時間（秒）。回転が終わってから少しおいて出る
-    static let hold = 0.03
+    static let hold = 0.015
 
     func body(content: Content) -> some View {
         content.keyframeAnimator(initialValue: Value(), trigger: token) { view, value in
@@ -281,32 +283,32 @@ struct OrientationReveal: ViewModifier {
             KeyframeTrack(\.opacity) {
                 MoveKeyframe(0)
                 LinearKeyframe(0, duration: wait)
-                CubicKeyframe(1, duration: 0.16)
+                CubicKeyframe(1, duration: 0.08)
             }
             KeyframeTrack(\.scaleX) {
                 MoveKeyframe(Self.hiddenScale)
                 LinearKeyframe(Self.hiddenScale, duration: wait)
-                CubicKeyframe(1.14, duration: 0.17)   // 横にふくらむ
-                CubicKeyframe(0.93, duration: 0.12)
-                CubicKeyframe(1.03, duration: 0.11)
-                CubicKeyframe(1.0, duration: 0.12)
+                CubicKeyframe(1.14, duration: 0.085)   // 横にふくらむ
+                CubicKeyframe(0.93, duration: 0.06)
+                CubicKeyframe(1.03, duration: 0.055)
+                CubicKeyframe(1.0, duration: 0.06)
             }
             KeyframeTrack(\.scaleY) {
                 MoveKeyframe(Self.hiddenScale)
                 LinearKeyframe(Self.hiddenScale, duration: wait)
-                CubicKeyframe(0.88, duration: 0.17)   // 縦はつぶれる
-                CubicKeyframe(1.07, duration: 0.12)
-                CubicKeyframe(0.98, duration: 0.11)
-                CubicKeyframe(1.0, duration: 0.12)
+                CubicKeyframe(0.88, duration: 0.085)   // 縦はつぶれる
+                CubicKeyframe(1.07, duration: 0.06)
+                CubicKeyframe(0.98, duration: 0.055)
+                CubicKeyframe(1.0, duration: 0.06)
             }
         }
         .opacity(hidden ? 0 : 1)
     }
 
-    /// マスごとの遅れ: グリッドの中央から離れるほど少し遅らせる（最大 0.12 秒）
+    /// マスごとの遅れ: グリッドの中央から離れるほど少し遅らせる（最大 0.06 秒）
     static func delay(slot: Int, layout: GridLayout) -> Double {
         let row = Double(slot / layout.columns), column = Double(slot % layout.columns)
         let dr = row - Double(layout.rows - 1) / 2, dc = column - Double(layout.columns - 1) / 2
-        return min(0.12, (dr * dr + dc * dc).squareRoot() * 0.025)
+        return min(0.06, (dr * dr + dc * dc).squareRoot() * 0.0125)
     }
 }
