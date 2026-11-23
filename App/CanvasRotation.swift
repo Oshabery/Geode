@@ -272,7 +272,7 @@ final class FixedCanvasController<Content: View>: UIViewController {
                 // 少しおいてからアイコンを出し直す。新しい並びで新しく作られるアイコン
                 // （縦と横で置き場所の違うアイコン、作り直される編集画面）が先に画面に作られてから始めないと、
                 // それらのアイコンだけ動かずに出てしまう（ユーザーの指摘）
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { CanvasOrientation.shared.revealIcons() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { CanvasOrientation.shared.revealIcons() }
             }
         })
     }
@@ -303,9 +303,9 @@ struct OrientationReveal: ViewModifier {
     static let hiddenScale = 0.8
     static let hiddenBlur = 8.0
     /// 出てくるのにかかる時間（秒）。消えるときも同じ時間をかける（ユーザーの指定）
-    static let duration = 0.26
+    static let duration = 0.18
     /// 消えたままでいる時間（秒）。回転が終わってから少しおいて出る
-    static let hold = 0.015
+    static let hold = 0.0
 
     func body(content: Content) -> some View {
         content.keyframeAnimator(initialValue: Value(), trigger: token) { view, value in
@@ -341,10 +341,10 @@ struct OrientationReveal: ViewModifier {
         .animation(hidden ? .smooth(duration: Self.duration) : nil, value: hidden)
     }
 
-    /// マスごとの遅れ: グリッドの中央から離れるほど少し遅らせる（最大 0.06 秒）
+    /// マスごとの遅れ: グリッドの中央から離れるほど少し遅らせる（最大 0.04 秒）
     static func delay(slot: Int, layout: GridLayout) -> Double {
         let row = Double(slot / layout.columns), column = Double(slot % layout.columns)
         let dr = row - Double(layout.rows - 1) / 2, dc = column - Double(layout.columns - 1) / 2
-        return min(0.06, (dr * dr + dc * dc).squareRoot() * 0.0125)
+        return min(0.04, (dr * dr + dc * dc).squareRoot() * 0.01)
     }
 }
