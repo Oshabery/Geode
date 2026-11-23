@@ -34,11 +34,11 @@ struct ContentView: View {
     @AppStorage("glowMotionStrength") private var glowMotionStrength = 1.0
     @State private var editing = false
     @State private var showSettings = false
-    /// iPad の向き。回転の瞬間だけ中身を逆向きに回し、Geode のアニメーションで新しい向きへ戻す
+    /// iPad の向き。中身（上のボタンとグリッド）だけを回す角度と、縦 / 横どちらの配置を出すか
     @ObservedObject private var canvas = CanvasOrientation.shared
     private let isPad = UIDevice.current.userInterfaceIdiom == .pad
 
-    /// いま使う配置の向き。iPad のウィンドウが横長なら横画面の配置。iPhone は常に縦
+    /// いま使う配置の向き。iPad で回した中身が横長なら横画面の配置。iPhone は常に縦
     private var orientation: BoardOrientation {
         isPad && canvas.isLandscape ? .landscape : .portrait
     }
@@ -112,14 +112,19 @@ struct ContentView: View {
             let insets = geo.safeAreaInsets
             let full = CGSize(width: geo.size.width + insets.leading + insets.trailing,
                               height: geo.size.height + insets.top + insets.bottom)
-            let quarter = CanvasRotation.isQuarterTurn(canvas.degrees)
-            let canvasSize = quarter ? CGSize(width: full.height, height: full.width) : full
+            // iOS がウィンドウを回している最中は、ウィンドウの大きさが新しい向きに変わった時点から
+            // 中身を逆向きに回して、前の見た目のまま残す（180° は大きさが変わらないので、すぐに）
+            let counter = canvas.counter.flatMap { c in
+                (full != c.windowSize || CanvasRotation.normalized(c.degrees) == 180) ? c.degrees : nil
+            }
+            let degrees = counter ?? canvas.degrees
+            let canvasSize = CanvasRotation.canvasSize(window: full, degrees: degrees)
             mainContent
-                .padding(CanvasRotation.canvasInsets(insets, degrees: canvas.degrees))
+                .padding(CanvasRotation.canvasInsets(insets, degrees: degrees))
                 .environment(\.geodeCanvasSize, canvasSize)
                 .frame(width: canvasSize.width, height: canvasSize.height)
                 .coordinateSpace(name: CanvasRotation.coordinateSpace)
-                .rotationEffect(.degrees(canvas.degrees))
+                .rotationEffect(.degrees(degrees))
                 .frame(width: full.width, height: full.height)
                 // GeometryReader の原点は安全領域の内側なので、画面全体の中央に置き直す
                 .position(x: full.width / 2 - insets.leading, y: full.height / 2 - insets.top)
@@ -151,7 +156,11 @@ struct ContentView: View {
         // オンにすると Geode のタッチを優先する（代わりにホームへ戻るには下端を 2 回スワイプする）
         .defersSystemGestures(on: preferBottomTouches ? .bottom : [])
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { store.refreshDirectStates() }
+            if phase == .active {
+                store.refreshDirectStates()
+                // 裏にいる間に端末の向きが変わっていても合わせる
+                if isPad { canvas.lockMayHaveChanged() }
+            }
             updateGlowMotion()
         }
         .onChange(of: uiStyle) { _, _ in updateGlowMotion() }

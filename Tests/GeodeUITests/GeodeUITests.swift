@@ -63,6 +63,13 @@ final class GeodeUITests: XCTestCase {
         app.navigationBars["設定"].buttons["完了"].tap()
     }
 
+    /// 向きを固定できなかったとき（iPadOS 17/18 など）の動き: iOS がウィンドウを回すが、回転のアニメーションは止める
+    func testPadRotationWithoutLockShowsNoBlackCorners() throws {
+        let app = launch(["-GeodeNoOrientationLock"])
+        let (_, worst) = try recordRotation(app, name: "08-rotation-nolock")
+        XCTAssertLessThan(worst, 0.03, "回転中に黒い部分が見えない（一番多いコマで \(Int(worst * 100))%）")
+    }
+
     /// 比較用: iOS の回転のアニメーションをそのまま出したときの画面を撮る（黒い部分を数えられているかの確認）。
     /// 結果は判定せず、撮った画面の名前に黒い部分の割合を付けて残す
     func testPadSystemRotationBaseline() throws {
@@ -89,17 +96,18 @@ final class GeodeUITests: XCTestCase {
         let recorder = ScreenRecorder()
         recorder.start()
         XCUIDevice.shared.orientation = .landscapeLeft
-        let moved = expectation(for: NSPredicate { _, _ in
+        // ウィンドウの向きを固定できたときはボタンが画面の別の辺へ移り、できなかったときはウィンドウが横になる
+        let window = app.windows.firstMatch
+        let rotated = expectation(for: NSPredicate { _, _ in
             let now = gear.frame
-            return abs(now.midX - before.midX) > 100 || abs(now.midY - before.midY) > 100
+            let moved = abs(now.midX - before.midX) > 100 || abs(now.midY - before.midY) > 100
+            return moved || window.frame.width > window.frame.height
         }, evaluatedWith: nil)
-        wait(for: [moved], timeout: 5)
+        wait(for: [rotated], timeout: 5)
         sleep(1)
         let frames = recorder.stop()
         capture(app, "\(name)-landscape")
-
-        let window = app.windows.firstMatch
-        XCTAssertGreaterThan(window.frame.width, window.frame.height, "横にするとウィンドウも横になる")
+        print("\(name): ウィンドウ \(window.frame.size)、設定ボタン \(before) → \(gear.frame)")
 
         // 黒い部分の割合（背景は白いので、黒いのは回転で見えた外側）
         var worst = 0.0
