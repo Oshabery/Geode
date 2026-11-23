@@ -134,10 +134,21 @@ final class CanvasOrientation: ObservableObject {
         }
     }
 
-    /// iOS がウィンドウを回し始める。アイコンを一瞬で隠す
+    /// 消えるのにかける時間（出てくるときと同じ。`OrientationReveal.duration`）
+    static var hideDuration: Double { OrientationReveal.duration }
+    /// 最後に消し始めた時刻
+    private(set) var hideStarted = Date.distantPast
+
+    /// iOS がウィンドウを回し始める。アイコンをフェードしながら小さくして消す（出てくるときと同じ時間）
     func hideIcons() {
         guard !iconsHidden else { return }
-        withoutAnimation { iconsHidden = true }
+        hideStarted = Date()
+        withAnimation(.easeInOut(duration: Self.hideDuration)) { iconsHidden = true }
+    }
+
+    /// 消え終わるまでの残り時間（秒）
+    var remainingHideTime: Double {
+        max(0, Self.hideDuration - Date().timeIntervalSince(hideStarted))
     }
 
     /// 回転が終わった（UIView のアニメーションを戻した後に呼ぶ）。隠したアイコンを、ぷよっと弾ませて出し直す。
@@ -168,6 +179,8 @@ final class FixedCanvasController<Content: View>: UIViewController {
     let host: UIHostingController<Content>
     /// iOS がウィンドウを回している最中（置き直しは回転の処理の中で行う）
     private var transitioning = false
+    /// 回転の後、アイコンが消え終わるのを待っている（それまでアイコンの向きと並びは変えない）
+    private var iconSwitchPending = false
     /// UI テストの比較用（-GeodeSystemRotation）: 逆向きに回さず、iOS の回転のまま（四隅が黒く見える従来の動き）
     private let systemRotation = CommandLine.arguments.contains("-GeodeSystemRotation")
 
@@ -205,14 +218,17 @@ final class FixedCanvasController<Content: View>: UIViewController {
         place(windowDegrees: windowDegrees)
     }
 
-    /// 端末を縦に持ったときの大きさで描き、ウィンドウの回転の逆向きに回して中央に置く
+    /// 端末を縦に持ったときの大きさで描き、ウィンドウの回転の逆向きに回して中央に置く。
+    /// アイコンの向きと縦 / 横の並びも合わせる（回転の後でアイコンが消え終わるのを待っている間を除く）
     private func place(windowDegrees: Double) {
         let size = CanvasRotation.fixedSize(window: view.bounds.size, windowDegrees: windowDegrees)
         host.view.transform = .identity
         host.view.bounds = CGRect(origin: .zero, size: size)
         host.view.center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
         host.view.transform = CGAffineTransform(rotationAngle: -windowDegrees * .pi / 180)
-        CanvasOrientation.shared.windowRotated(to: windowDegrees)
+        if !iconSwitchPending {
+            CanvasOrientation.shared.windowRotated(to: windowDegrees)
+        }
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -224,9 +240,15 @@ final class FixedCanvasController<Content: View>: UIViewController {
             return
         }
         transitioning = true
-        // 回転の間はアイコンを隠す。iOS の回転のアニメーションも止める（止めきれずに一瞬傾いて見えることがある）
-        CanvasOrientation.shared.hideIcons()
+        iconSwitchPending = true
+        // iOS の回転のアニメーションを止める（止めきれずに一瞬傾いて見えることがある）。
+        // 回転のアニメーションが作られた後（次の周回）に戻し、アイコンをフェードしながら消す。
+        // 止めたままだと、アイコンを消すアニメーションも止まって一瞬で消えてしまう
         UIView.setAnimationsEnabled(false)
+        DispatchQueue.main.async {
+            UIView.setAnimationsEnabled(true)
+            CanvasOrientation.shared.hideIcons()
+        }
         coordinator.animate(alongsideTransition: { [weak self] _ in
             guard let self else { return }
             // ウィンドウを回すのと同じ量だけ逆に回す（画面上では動かない）。
@@ -239,12 +261,19 @@ final class FixedCanvasController<Content: View>: UIViewController {
             UIView.setAnimationsEnabled(true)
             guard let self else { return }
             self.transitioning = false
-            // ずらした分と誤差をなくし、ウィンドウの実際の向きで置き直す（アイコンの向きと縦 / 横の並びもここで変わる。隠したまま）
+            // ずらした分と誤差をなくし、ウィンドウの実際の向きで置き直す
             self.place(windowDegrees: self.windowDegrees)
-            // アニメーションを戻した後、少しおいてからアイコンを出し直す。新しい並びで新しく作られるアイコン
-            // （縦と横で置き場所の違うアイコン、作り直される編集画面）が先に画面に作られてから始めないと、
-            // それらのアイコンだけ動かずに出てしまう（ユーザーの指摘）
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { CanvasOrientation.shared.revealIcons() }
+            // アイコンが消え終わってから、アイコンの向きと縦 / 横の並びを変える（消えている途中で並びが飛ばないように）
+            let wait = max(CanvasOrientation.shared.remainingHideTime, 0.02)
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+                guard let self else { return }
+                self.iconSwitchPending = false
+                CanvasOrientation.shared.windowRotated(to: self.windowDegrees)
+                // 少しおいてからアイコンを出し直す。新しい並びで新しく作られるアイコン
+                // （縦と横で置き場所の違うアイコン、作り直される編集画面）が先に画面に作られてから始めないと、
+                // それらのアイコンだけ動かずに出てしまう（ユーザーの指摘）
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { CanvasOrientation.shared.revealIcons() }
+            }
         })
     }
 }
@@ -270,6 +299,8 @@ struct OrientationReveal: ViewModifier {
 
     /// 消えている間の大きさ
     static let hiddenScale = 0.35
+    /// 出てくるのにかかる時間（秒）。消えるときも同じ時間をかける（ユーザーの指定）
+    static let duration = 0.26
     /// 消えたままでいる時間（秒）。回転が終わってから少しおいて出る
     static let hold = 0.015
 
@@ -302,7 +333,12 @@ struct OrientationReveal: ViewModifier {
                 CubicKeyframe(1.0, duration: 0.06)
             }
         }
+        // 消えるとき: フェードしながら小さくなる（出てくるときの逆、同じ時間）。出てくるときはキーフレームに任せるので、
+        // 隠すのをやめる変化にはアニメーションを付けない。キャンバスは別の UIHostingController の中にあり、
+        // 外の withAnimation が届かないので、ここでアニメーションを付ける
+        .scaleEffect(hidden ? Self.hiddenScale : 1)
         .opacity(hidden ? 0 : 1)
+        .animation(hidden ? .easeInOut(duration: Self.duration) : nil, value: hidden)
     }
 
     /// マスごとの遅れ: グリッドの中央から離れるほど少し遅らせる（最大 0.06 秒）
