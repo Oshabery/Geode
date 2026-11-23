@@ -6,7 +6,9 @@
 #   ./tools/test.sh all        すべて
 #   ./tools/test.sh build      ビルドだけ
 #
-# 結果は build/ に保存する（ログ、.xcresult、UI Test の画面）。
+#   GEODE_DEVICE=ipad ./tools/test.sh ui   iPad のシミュレータで実行する（既定は iPhone）
+#
+# 結果は build/ に保存する（ログ、.xcresult、UI Test の画面）。iPad の結果は名前に -ipad が付く。
 # シミュレータで、署名なしで実行する。実機や署名の設定には触れない。
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -14,13 +16,20 @@ cd "$(dirname "$0")/.."
 MODE="${1:-unit}"
 mkdir -p build
 
+# 使う端末（iPhone / iPad）と、結果のファイル名
+case "${GEODE_DEVICE:-iphone}" in
+  iphone|iPhone) FAMILY=iPhone; NAME="$MODE" ;;
+  ipad|iPad)     FAMILY=iPad;   NAME="$MODE-ipad" ;;
+  *) echo "GEODE_DEVICE は iphone か ipad です"; exit 2 ;;
+esac
+
 # Team ID の設定ファイルが無いとプロジェクトを開けないので、無いときだけ空のものを作る（既存のものは触らない）
 [ -f Local.xcconfig ] || touch Local.xcconfig
 
 command -v xcodegen >/dev/null || { echo "xcodegen が必要です: brew install xcodegen"; exit 1; }
 xcodegen generate --quiet
 
-# 一番新しい iOS ランタイムの iPhone シミュレータを選ぶ
+# 一番新しい iOS ランタイムの iPhone（または iPad）シミュレータを選ぶ
 DEVICE_ID=$(xcrun simctl list devices available -j | python3 -I -c '
 import json, re, sys
 devices = json.load(sys.stdin)["devices"]
@@ -31,12 +40,12 @@ for runtime in sorted(devices, key=version, reverse=True):
     if version(runtime)[0] < 0:
         continue
     for d in devices[runtime]:
-        if d["name"].startswith("iPhone"):
+        if d["name"].startswith(sys.argv[1]):
             print(d["udid"]); sys.exit(0)
-sys.exit("iPhone のシミュレータが見つかりません")
-')
+sys.exit(sys.argv[1] + " のシミュレータが見つかりません")
+' "$FAMILY")
 DEST="platform=iOS Simulator,id=$DEVICE_ID"
-echo "シミュレータ: $DEVICE_ID"
+echo "シミュレータ（$FAMILY）: $DEVICE_ID"
 
 # 先にシミュレータを起動しきっておく。起動途中に UI テストがアプリを立ち上げると、
 # 「Timed out while launching application」で失敗することがある（CI の起動直後の端末で発生）
@@ -55,7 +64,7 @@ case "$MODE" in
   *) echo "使い方: $0 [unit|ui|all|build]"; exit 2 ;;
 esac
 
-RESULT="build/$MODE.xcresult"
+RESULT="build/$NAME.xcresult"
 rm -rf "$RESULT"
 set +e
 xcodebuild "$ACTION" \
@@ -65,31 +74,33 @@ xcodebuild "$ACTION" \
   -resultBundlePath "$RESULT" \
   ${ONLY[@]+"${ONLY[@]}"} \
   CODE_SIGNING_ALLOWED=NO \
-  > "build/$MODE.log" 2>&1
+  > "build/$NAME.log" 2>&1
 STATUS=$?
 set -e
 
 # 要点だけ表示する（全文は build/<mode>.log）
-grep -E "error:|Test Case .*(passed|failed|skipped)|Executed [0-9]+ test|\*\* (BUILD|TEST) (SUCCEEDED|FAILED) \*\*" "build/$MODE.log" || true
+grep -E "error:|Test Case .*(passed|failed|skipped)|Executed [0-9]+ test|\*\* (BUILD|TEST) (SUCCEEDED|FAILED) \*\*" "build/$NAME.log" || true
 
 # 失敗したときは、原因を追えるようにログの末尾と使えるシミュレータを表示する
 # （CI ではログファイルを開けないため、ここに出さないと詳細が分からない）
 if [ $STATUS -ne 0 ]; then
   [ -n "${GITHUB_ACTIONS:-}" ] && echo "::group::xcodebuild のログ（末尾 80 行）"
-  echo "---- build/$MODE.log の末尾 ----"
-  tail -n 80 "build/$MODE.log"
+  echo "---- build/$NAME.log の末尾 ----"
+  tail -n 80 "build/$NAME.log"
   [ -n "${GITHUB_ACTIONS:-}" ] && echo "::endgroup::"
   [ -n "${GITHUB_ACTIONS:-}" ] && echo "::group::使えるシミュレータ"
   echo "---- 使えるシミュレータ（選んだもの: $DEVICE_ID）----"
-  xcrun simctl list devices available | grep -E "^-- |iPhone" || true
+  xcrun simctl list devices available | grep -E "^-- |$FAMILY" || true
   [ -n "${GITHUB_ACTIONS:-}" ] && echo "::endgroup::"
 fi
 
 # UI Test の画面を取り出す
 if [ "$MODE" = ui ] || [ "$MODE" = all ]; then
-  rm -rf build/screenshots
-  if xcrun xcresulttool export attachments --path "$RESULT" --output-path build/screenshots >/dev/null 2>&1; then
-    echo "画面: build/screenshots/"
+  SHOTS=build/screenshots
+  [ "$FAMILY" = iPad ] && SHOTS=build/screenshots-ipad
+  rm -rf "$SHOTS"
+  if xcrun xcresulttool export attachments --path "$RESULT" --output-path "$SHOTS" >/dev/null 2>&1; then
+    echo "画面: $SHOTS/"
   fi
 fi
 

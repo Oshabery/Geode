@@ -368,12 +368,17 @@ struct GroupBackdrop: View {
     let focus: CGPoint?
     /// 明るい背景にする（グローのライト）。それ以外はこれまでどおり暗いすりガラス
     var light = false
+    /// iPad の回すキャンバスの範囲（グリッド内の座標）。あればキャンバス全体を覆う。
+    /// 無ければ（iPhone）これまでどおり画面全体を覆う
+    var canvas: CGRect? = nil
 
     var body: some View {
         let screen = UIScreen.main.bounds.size
-        // 明るい部分の中心（画面の座標）。分からなければ画面中央
-        let center = focus.map { CGPoint(x: gridFrame.minX + $0.x, y: gridFrame.minY + $0.y) }
-            ?? CGPoint(x: screen.width / 2, y: screen.height / 2)
+        // 覆う範囲（グリッド内の座標）。回したキャンバスの中では画面の座標が使えないので、キャンバスの範囲を使う
+        let area = canvas ?? CGRect(x: -gridFrame.minX, y: -gridFrame.minY, width: screen.width, height: screen.height)
+        // 明るい部分の中心（覆う範囲の中の座標）。分からなければ中央
+        let center = focus.map { CGPoint(x: $0.x - area.minX, y: $0.y - area.minY) }
+            ?? CGPoint(x: area.width / 2, y: area.height / 2)
         ZStack {
             if light {
                 // 明るいすりガラス。中心は透けて、離れるほど白い霧がかかる
@@ -395,10 +400,10 @@ struct GroupBackdrop: View {
                     .position(center)
             }
         }
-        .frame(width: screen.width, height: screen.height)
+        .frame(width: area.width, height: area.height)
         .clipped()
-        // グリッドの座標の中で、画面全体にぴったり重なる位置へ置く
-        .position(x: screen.width / 2 - gridFrame.minX, y: screen.height / 2 - gridFrame.minY)
+        // グリッドの座標の中で、覆う範囲にぴったり重なる位置へ置く
+        .position(x: area.midX, y: area.midY)
         .allowsHitTesting(false)
     }
 }
@@ -485,7 +490,8 @@ struct LauncherGridView: View {
                     // 押しているグループの周りだけ少し明るくして、1 枚上の階層に上がった感じを出す
                     GroupBackdrop(gridFrame: geo.frame(in: .global),
                                   focus: groupSlot.map { metrics.center($0) },
-                                  light: isGlowLight)
+                                  light: isGlowLight,
+                                  canvas: geo.bounds(of: .named(CanvasRotation.coordinateSpace)))
                         .transition(.opacity)
                         .zIndex(1)
                     // グループの中身: グループのマスから外へ広がるように、近いものから順に出てくる。

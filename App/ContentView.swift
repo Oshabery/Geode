@@ -34,12 +34,13 @@ struct ContentView: View {
     @AppStorage("glowMotionStrength") private var glowMotionStrength = 1.0
     @State private var editing = false
     @State private var showSettings = false
-    /// ウィンドウの大きさ。iPad で縦画面か横画面かを決める
-    @State private var windowSize: CGSize = .zero
+    /// iPad の向き。画面（ウィンドウ）は縦に固定し、中身だけをこの角度で回す
+    @ObservedObject private var canvas = CanvasOrientation.shared
+    private let isPad = UIDevice.current.userInterfaceIdiom == .pad
 
-    /// いま使う配置の向き。iPad でウィンドウが横長なら横画面の配置（Split View の細いウィンドウは縦扱い）。iPhone は常に縦
+    /// いま使う配置の向き。iPad を横に持っていれば横画面の配置。iPhone は常に縦
     private var orientation: BoardOrientation {
-        UIDevice.current.userInterfaceIdiom == .pad && windowSize.width > windowSize.height ? .landscape : .portrait
+        isPad && canvas.isLandscape ? .landscape : .portrait
     }
 
     /// 向きごとの配置を編集するためのバインディング
@@ -67,14 +68,10 @@ struct ContentView: View {
         }
     }
 
-    /// 回転中に見える四隅を埋める色（背景の地の色）
-    private var rotationUnderlay: Color {
-        if isGlow { return glowLight ? Color(white: 0.95) : Color(white: 0.04) }
-        return useCustomBackground ? backgroundColor.color : Color(.systemBackground)
-    }
-
-    var body: some View {
+    /// 上のボタンとグリッド（iPhone ではそのまま、iPad では回すキャンバスの中に置く）
+    private var mainContent: some View {
         VStack(spacing: 0) {
+
             HStack {
                 Button { showSettings = true } label: {
                     Image(systemName: "gearshape").font(.title3).frame(width: 44, height: 44)
@@ -106,11 +103,35 @@ struct ContentView: View {
                 DockBar(editing: editing)
             }
         }
-        .background {
-            GeometryReader { geo in
-                Color.clear
-                    .onAppear { windowSize = geo.size }
-                    .onChange(of: geo.size) { _, size in windowSize = size }
+    }
+
+    /// iPad: 画面は縦に固定したまま、中身だけを端末の向きに合わせて回す。
+    /// 背景はこの外側にあるので回らない。安全領域は回した向きに合わせて付け直す
+    private var rotatingCanvas: some View {
+        GeometryReader { geo in
+            let insets = geo.safeAreaInsets
+            let full = CGSize(width: geo.size.width + insets.leading + insets.trailing,
+                              height: geo.size.height + insets.top + insets.bottom)
+            let quarter = CanvasRotation.isQuarterTurn(canvas.degrees)
+            let canvasSize = quarter ? CGSize(width: full.height, height: full.width) : full
+            mainContent
+                .padding(CanvasRotation.canvasInsets(insets, degrees: canvas.degrees))
+                .frame(width: canvasSize.width, height: canvasSize.height)
+                .coordinateSpace(name: CanvasRotation.coordinateSpace)
+                .rotationEffect(.degrees(canvas.degrees))
+                .frame(width: full.width, height: full.height)
+                // GeometryReader の原点は安全領域の内側なので、画面全体の中央に置き直す
+                .position(x: full.width / 2 - insets.leading, y: full.height / 2 - insets.top)
+                .animation(.spring(duration: 0.5, bounce: 0.1), value: canvas.degrees)
+        }
+    }
+
+    var body: some View {
+        Group {
+            if isPad {
+                rotatingCanvas
+            } else {
+                mainContent
             }
         }
         .background {
@@ -119,16 +140,6 @@ struct ContentView: View {
             } else {
                 (useCustomBackground ? backgroundColor.color : Color(.systemBackground)).ignoresSafeArea()
             }
-        }
-        .background {
-            // iPad を回すと、iOS が画面全体を回転させる間、ウィンドウの外側（四隅）が黒く見える。
-            // ウィンドウより大きく（画面の対角線の長さの正方形）背景の地の色を敷いて、その部分を埋める
-            let screen = UIScreen.main.bounds.size
-            let side = (screen.width * screen.width + screen.height * screen.height).squareRoot() * 1.1
-            rotationUnderlay
-                .frame(width: side, height: side)
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
         }
         .tint(tint)
         .preferredColorScheme(scheme)

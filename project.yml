@@ -29,12 +29,10 @@ targets:
         CFBundleDisplayName: Geode
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        # iPad は Split View / Stage Manager に対応するため 4 方向すべてを許可する（iPhone は縦のみのまま）
-        UISupportedInterfaceOrientations~ipad:
-          - UIInterfaceOrientationPortrait
-          - UIInterfaceOrientationPortraitUpsideDown
-          - UIInterfaceOrientationLandscapeLeft
-          - UIInterfaceOrientationLandscapeRight
+        # iPad も画面は縦に固定し、端末の向きに合わせて Geode が中身だけを回す（iOS の回転で四隅が黒く見えるため）。
+        # 縦固定にするには全画面専用にする必要があり、Split View / Stage Manager の小さいウィンドウでは使えない
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait]
+        UIRequiresFullScreen: true
         NSCameraUsageDescription: ライトのオン / オフを切り替えるために使います。
         NSAppleMusicUsageDescription: ミュージックの再生 / 一時停止、曲送りに使います。
         # 60Hz を超える表示（ProMotion の 120Hz）をアプリに許可する
