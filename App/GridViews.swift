@@ -99,6 +99,7 @@ struct GridCells<Cell: View>: View {
     @Environment(\.geodeIconAngle) private var iconAngle
     /// iPad: 向きが変わったらアイコンを一度消して、ぷよっと出し直す
     @Environment(\.geodeRevealToken) private var revealToken
+    @Environment(\.geodeIconsHidden) private var iconsHidden
 
     private struct Entry: Identifiable {
         let id: AnyHashable
@@ -117,10 +118,9 @@ struct GridCells<Cell: View>: View {
                 cell(entry.slot)
                     .frame(width: metrics.cellSize.width, height: metrics.cellSize.height, alignment: .top)
                     // 弾み方はアイコンから見た縦横で付けるので、回す前に掛ける
-                    // 横の並びにだけあるアイコンは向きの変化で新しく作られるので、作られた直後にも同じように出す
                     .modifier(OrientationReveal(token: revealToken,
                                                 delay: OrientationReveal.delay(slot: entry.slot, layout: metrics.layout),
-                                                onAppear: true))
+                                                hidden: iconsHidden))
                     .rotationEffect(.degrees(iconAngle))
                     .position(metrics.center(entry.slot))
             }

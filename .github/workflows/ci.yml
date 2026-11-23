@@ -76,5 +76,6 @@ jobs:
             build/ui-ipad.log
             build/ui-ipad.mp4
             build/ui-ipad-video.log
+            build/ui-ipad-video-start.txt
             build/screenshots-ipad
           if-no-files-found: ignore

@@ -173,6 +173,7 @@ struct ContentView: View {
         }
         .environment(\.geodeIconAngle, canvas.iconDegrees)
         .environment(\.geodeRevealToken, canvas.revealToken)
+        .environment(\.geodeIconsHidden, canvas.iconsHidden)
         .environmentObject(store)
         .tint(tint)
         .preferredColorScheme(scheme)
@@ -199,7 +200,20 @@ struct ContentView: View {
         .onChange(of: uiStyle) { _, _ in updateGlowMotion() }
         .onChange(of: glowMotion) { _, _ in updateGlowMotion() }
         .onChange(of: glowMotionStrength) { _, _ in updateGlowMotion() }
-        .onAppear { updateGlowMotion() }
+        .onAppear {
+            updateGlowMotion()
+            // UI テストで出直しの動きを録画する（-GeodeRevealLoop）: 回さずに 3 秒ごとにアイコンを隠して出し直す
+            if SharedStorage.isUITesting, CommandLine.arguments.contains("-GeodeRevealLoop") {
+                Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
+                    Task { @MainActor in
+                        print("GEODE-REVEAL \(Date().timeIntervalSince1970)")
+                        CanvasOrientation.shared.hideIcons()
+                        try? await Task.sleep(for: .milliseconds(300))
+                        CanvasOrientation.shared.revealIcons()
+                    }
+                }
+            }
+        }
         .sheet(isPresented: $showSettings) {
             SettingsView(orientation: orientation)
                 .environmentObject(store)

@@ -33,6 +33,7 @@ struct EditGridView: View {
     @Environment(\.geodeIconAngle) private var iconAngle
     /// iPad: 向きが変わったらアイコンを一度消して、ぷよっと出し直す
     @Environment(\.geodeRevealToken) private var revealToken
+    @Environment(\.geodeIconsHidden) private var iconsHidden
 
     /// 空きマスの「＋」タイルの色
     private static let addColor = Theme.addColor
@@ -58,7 +59,7 @@ struct EditGridView: View {
                         deleteButton(slot, item)
                             .modifier(OrientationReveal(token: revealToken,
                                                         delay: OrientationReveal.delay(slot: slot, layout: layout),
-                                                        onAppear: true))
+                                                        hidden: iconsHidden))
                             .position(deleteButtonCenter(slot, metrics: metrics))
                             .zIndex(1)
                     }
@@ -116,7 +117,8 @@ struct EditGridView: View {
         } else if let item = slots[slot] {
             TileView(item: item, metrics: metrics)
                 .modifier(OrientationReveal(token: revealToken,
-                                            delay: OrientationReveal.delay(slot: slot, layout: layout), onAppear: true))
+                                            delay: OrientationReveal.delay(slot: slot, layout: layout),
+                                            hidden: iconsHidden))
                 // iPad: アイコンだけを持った向きに回す（ドラッグの移動量は回さない）
                 .rotationEffect(.degrees(iconAngle))
                 .offset(dragFrom == slot ? dragOffset : .zero)

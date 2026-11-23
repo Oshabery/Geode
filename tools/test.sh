@@ -58,7 +58,15 @@ ACTION=test
 ONLY=()
 case "${MODE}" in
   unit)  ONLY=(-only-testing:GeodeTests) ;;
-  ui)    ONLY=(-only-testing:GeodeUITests) ;;
+  ui)    ONLY=(-only-testing:GeodeUITests)
+         # iPad では iPad の回転のテストだけを行う（共通の画面のテストは iPhone で行う。録画を短くし、シミュレータの時間切れを減らす）
+         if [ "$FAMILY" = iPad ]; then
+           ONLY=()
+           for t in testPadGridStaysFixedWhenRotated testPadLandscapeArrangementIsSeparate \
+                    testPadLaunchInLandscapeMatchesRotation testPadRevealAnimation testPadSystemRotationBaseline; do
+             ONLY+=("-only-testing:GeodeUITests/GeodeUITests/$t")
+           done
+         fi ;;
   all)   ;;
   build) ACTION=build ;;
   *) echo "使い方: $0 [unit|ui|all|build]"; exit 2 ;;
@@ -74,7 +82,9 @@ if [ "$FAMILY" = iPad ] && { [ "$MODE" = ui ] || [ "$MODE" = all ]; }; then
   xcrun simctl io "$DEVICE_ID" recordVideo --codec=h264 --force "build/${NAME}.mp4" > "build/${NAME}-video.log" 2>&1 &
   REC_PID=$!
   sleep 2
-  echo "録画の開始: $(date -u +%Y-%m-%dT%H:%M:%SZ) $(date +%s)" | tee -a "build/${NAME}-video.log"
+  # 録画の開始時刻（UNIX 時間）。テストの GEODE-ROTATE の時刻から引くと、録画の中の位置が分かる（おおよそ）
+  python3 -c "import time; print(time.time())" > "build/${NAME}-video-start.txt"
+  echo "録画の開始: $(cat "build/${NAME}-video-start.txt")"
 fi
 
 set +e

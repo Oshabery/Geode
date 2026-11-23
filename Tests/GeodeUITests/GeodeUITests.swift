@@ -113,6 +113,23 @@ final class GeodeUITests: XCTestCase {
         gear.tap()
         XCTAssertTrue(app.navigationBars["設定"].waitForExistence(timeout: 5), "回した後もボタンを押せる")
         app.navigationBars["設定"].buttons["完了"].tap()
+
+        // 録画で見比べるため、何度か回す（1 回の CI で複数の例を撮る）
+        sleep(2)
+        for (i, orientation) in [UIDeviceOrientation.portrait, .landscapeRight, .portrait, .landscapeLeft].enumerated() {
+            rotate(to: orientation, "fixed-\(i + 2)")
+            sleep(3)
+        }
+    }
+
+    /// アイコンの出直し（ぷよっと出る）の動きだけを録画する。-GeodeRevealLoop で、回さずに 3 秒ごとに出直す
+    func testPadRevealAnimation() throws {
+        XCUIDevice.shared.orientation = .portrait
+        let app = launch(["-GeodeSampleBoard", "-GeodeRevealLoop"])
+        try padOnly(app)
+        XCTAssertTrue(app.staticTexts["Alpha"].waitForExistence(timeout: 10))
+        print("GEODE-REVEAL start \(Date().timeIntervalSince1970)")
+        sleep(10)
     }
 
     /// 横に持ったまま起動しても、縦から回したときと同じ置き方になる（起動時の向きの読み違いがない）

@@ -74,6 +74,11 @@ private struct RevealTokenKey: EnvironmentKey {
     static let defaultValue: Int = 0
 }
 
+/// iOS がウィンドウを回している間はアイコンを隠す（iPhone では常に false）
+private struct IconsHiddenKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
     var geodeCanvasSize: CGSize? {
         get { self[CanvasSizeKey.self] }
@@ -89,44 +94,59 @@ extension EnvironmentValues {
         get { self[RevealTokenKey.self] }
         set { self[RevealTokenKey.self] = newValue }
     }
+
+    var geodeIconsHidden: Bool {
+        get { self[IconsHiddenKey.self] }
+        set { self[IconsHiddenKey.self] = newValue }
+    }
 }
 
 /// ウィンドウが端末に対して回っている角度と、縦 / 横どちらの配置を出すか（iPad のみ。iPhone は常に縦）
 @MainActor
 final class CanvasOrientation: ObservableObject {
     static let shared = CanvasOrientation()
-    static let animation = Animation.spring(duration: 0.45, bounce: 0.1)
 
     /// アイコンを回す角度（累積値。ウィンドウの角度と同じ向き）
     @Published private(set) var iconDegrees: Double = 0
     /// 横画面の配置を出すか（ウィンドウが端末に対して 90° 回っているか）
     @Published private(set) var isLandscape = false
-    /// 向きが変わるたびに増える番号（アイコンの出直しのきっかけ）
+    /// iOS がウィンドウを回している間、アイコンを隠す（回転の途中で、古い並び・新しい並びが傾いて見えないように）
+    @Published private(set) var iconsHidden = false
+    /// 隠したアイコンを出し直すたびに増える番号（`OrientationReveal` のきっかけ）
     @Published private(set) var revealToken = 0
-    /// 最初に向きが分かったとき（起動時）は出直しのアニメーションをしない
-    private var known = false
-    /// 最後に向きが変わった時刻（向きの変化で作り直された編集画面が、出直しのアニメーションをするかの判断に使う）
-    private(set) var lastReveal = Date.distantPast
 
     private init() {}
 
-    /// ウィンドウの向きが分かった・変わった。アイコンの向きと縦 / 横の並びを、画面の切り替わりと同時に一瞬で変える
-    /// （アニメーションさせると、画面より遅れて回って見えるため。ユーザーの指定）
+    private func withoutAnimation(_ change: () -> Void) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction, change)
+    }
+
+    /// ウィンドウの向きが分かった・変わった。アイコンの向きと縦 / 横の並びを、アニメーションなしで変える
     func windowRotated(to degrees: Double) {
         let next = CanvasRotation.nextAngle(current: iconDegrees, target: CanvasRotation.normalized(degrees))
         let landscape = CanvasRotation.isQuarterTurn(degrees)
-        guard next != iconDegrees || landscape != isLandscape else { known = true; return }
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
+        guard next != iconDegrees || landscape != isLandscape else { return }
+        withoutAnimation {
             iconDegrees = next
             isLandscape = landscape
-            if known {
-                revealToken &+= 1
-                lastReveal = Date()
-            }
         }
-        known = true
+    }
+
+    /// iOS がウィンドウを回し始める。アイコンを一瞬で隠す
+    func hideIcons() {
+        guard !iconsHidden else { return }
+        withoutAnimation { iconsHidden = true }
+    }
+
+    /// 回転が終わった（UIView のアニメーションを戻した後に呼ぶ）。隠したアイコンを、ぷよっと弾ませて出し直す。
+    /// 回転の途中で始めると、アニメーションが止められて一瞬で終わってしまうため、必ず回転の後に始める
+    func revealIcons() {
+        withoutAnimation {
+            iconsHidden = false
+            revealToken &+= 1
+        }
     }
 }
 
@@ -179,75 +199,20 @@ final class FixedCanvasController<Content: View>: UIViewController {
         return CanvasRotation.degrees(ofInterface: scene.effectiveGeometry.interfaceOrientation)
     }
 
-    /// いま置いているウィンドウの角度
-    private var placedDegrees: Double = 0
-
-    /// iOS がウィンドウを回している最中の、回った後の角度
-    private var pendingDegrees: Double?
-
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        if transitioning {
-            // ウィンドウが実際に新しい向きの大きさになった瞬間（同じコマ）に、キャンバスとアイコンを切り替える。
-            // 回転のアニメーションを止めると、ウィンドウが切り替わるのは回転の最初とは限らないため、大きさの変化で判断する
-            guard let pending = pendingDegrees,
-                  CanvasRotation.isQuarterTurn(pending - placedDegrees),
-                  (view.bounds.width > view.bounds.height) == CanvasRotation.isQuarterTurn(pending) else { return }
-            place(windowDegrees: pending)
-            return
-        }
+        guard !transitioning else { return }
         place(windowDegrees: windowDegrees)
     }
 
     /// 端末を縦に持ったときの大きさで描き、ウィンドウの回転の逆向きに回して中央に置く
     private func place(windowDegrees: Double) {
-        placedDegrees = windowDegrees
         let size = CanvasRotation.fixedSize(window: view.bounds.size, windowDegrees: windowDegrees)
         host.view.transform = .identity
         host.view.bounds = CGRect(origin: .zero, size: size)
         host.view.center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
         host.view.transform = CGAffineTransform(rotationAngle: -windowDegrees * .pi / 180)
         CanvasOrientation.shared.windowRotated(to: windowDegrees)
-    }
-
-    // MARK: 回転のアニメーションを止める
-
-    /// 止めたアニメーションを、回転が始まらなかったときに戻すための予約
-    private var restoreAnimations: DispatchWorkItem?
-    private var observingDevice = false
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        guard !systemRotation, !observingDevice else { return }
-        observingDevice = true
-        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-        NotificationCenter.default.addObserver(self, selector: #selector(deviceOrientationChanged),
-                                               name: UIDevice.orientationDidChangeNotification, object: nil)
-    }
-
-    /// 端末の向きが変わった（iOS が画面を回し始めるより前に届く）。ここで先にアニメーションを止めておくと、
-    /// 回転の最初の 1 コマから止まる（回転の通知を受けてからでは、傾いた画面が一瞬見えていた）
-    @objc private func deviceOrientationChanged() {
-        guard let target = Self.interfaceOrientation(for: UIDevice.current.orientation),
-              let scene = view.window?.windowScene,
-              target != scene.effectiveGeometry.interfaceOrientation else { return }
-        UIView.setAnimationsEnabled(false)
-        // 実際には回らなかったとき（向きのロック中など）のために、少し後に必ず戻す
-        restoreAnimations?.cancel()
-        let restore = DispatchWorkItem { UIView.setAnimationsEnabled(true) }
-        restoreAnimations = restore
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: restore)
-    }
-
-    /// 端末の向き → その向きで iOS が回す画面の向き（端末の landscapeLeft は画面の landscapeRight）
-    private static func interfaceOrientation(for device: UIDeviceOrientation) -> UIInterfaceOrientation? {
-        switch device {
-        case .portrait: return .portrait
-        case .portraitUpsideDown: return .portraitUpsideDown
-        case .landscapeLeft: return .landscapeRight
-        case .landscapeRight: return .landscapeLeft
-        default: return nil
-        }
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -259,18 +224,25 @@ final class FixedCanvasController<Content: View>: UIViewController {
             return
         }
         transitioning = true
-        // iOS の回転のアニメーションを止め、ウィンドウを一瞬で切り替える（端末の向きの通知で止めていなかったとき用）
+        // 回転の間はアイコンを隠す。iOS の回転のアニメーションも止める（止めきれずに一瞬傾いて見えることがある）
+        CanvasOrientation.shared.hideIcons()
         UIView.setAnimationsEnabled(false)
-        // 回った後の角度。キャンバスはウィンドウの大きさが変わった瞬間に、この角度の逆向きに置き直す（viewDidLayoutSubviews）
-        pendingDegrees = CanvasRotation.normalized(placedDegrees + delta)
-        coordinator.animate(alongsideTransition: nil, completion: { [weak self] _ in
-            self?.restoreAnimations?.cancel()
+        coordinator.animate(alongsideTransition: { [weak self] _ in
+            guard let self else { return }
+            // ウィンドウを回すのと同じ量だけ逆に回す（画面上では動かない）。
+            // 180° のときに回る向きが定まるよう、ごくわずかにずらす
+            let layer = self.host.view.layer
+            let current = (layer.value(forKeyPath: "transform.rotation.z") as? NSNumber)?.doubleValue ?? 0
+            layer.setValue(current - delta * .pi / 180 + 0.0001, forKeyPath: "transform.rotation.z")
+            self.host.view.center = CGPoint(x: size.width / 2, y: size.height / 2)
+        }, completion: { [weak self] _ in
             UIView.setAnimationsEnabled(true)
             guard let self else { return }
             self.transitioning = false
-            self.pendingDegrees = nil
-            // ウィンドウの実際の向きで置き直す（180° のように大きさが変わらないときや、食い違っていたときはここで直る）
+            // ずらした分と誤差をなくし、ウィンドウの実際の向きで置き直す（アイコンの向きと縦 / 横の並びもここで変わる。隠したまま）
             self.place(windowDegrees: self.windowDegrees)
+            // アニメーションを戻した後、次の周回でアイコンを出し直す
+            DispatchQueue.main.async { CanvasOrientation.shared.revealIcons() }
         })
     }
 }
@@ -285,9 +257,8 @@ struct OrientationReveal: ViewModifier {
     let token: Int
     /// 出始めるまでの遅れ（秒）。中央から外へ、少しずつ遅らせて波のように出す
     var delay: Double = 0
-    /// 向きの変化で作り直された直後にも出直す（編集画面は向きが変わると作り直すため、番号の変化では動かない）
-    var onAppear = false
-    @State private var appearCount = 0
+    /// 回転の間は隠す
+    var hidden = false
 
     struct Value {
         var scaleX = 1.0
@@ -297,11 +268,11 @@ struct OrientationReveal: ViewModifier {
 
     /// 消えている間の大きさ
     static let hiddenScale = 0.35
-    /// 消えたままでいる時間（秒）。画面の切り替わりと同時に消え、少しおいてから出る
-    static let hold = 0.06
+    /// 消えたままでいる時間（秒）。回転が終わってから少しおいて出る
+    static let hold = 0.03
 
     func body(content: Content) -> some View {
-        content.keyframeAnimator(initialValue: Value(), trigger: token &* 1000 &+ appearCount) { view, value in
+        content.keyframeAnimator(initialValue: Value(), trigger: token) { view, value in
             view
                 .scaleEffect(x: value.scaleX, y: value.scaleY)
                 .opacity(value.opacity)
@@ -329,14 +300,7 @@ struct OrientationReveal: ViewModifier {
                 CubicKeyframe(1.0, duration: 0.12)
             }
         }
-        .onAppear { startIfJustRotated() }
-    }
-
-    /// 作り直された直後に呼ぶ: 向きが変わったばかりなら出直しのアニメーションを始める
-    @MainActor
-    private func startIfJustRotated() {
-        guard onAppear, Date().timeIntervalSince(CanvasOrientation.shared.lastReveal) < 0.4 else { return }
-        appearCount &+= 1
+        .opacity(hidden ? 0 : 1)
     }
 
     /// マスごとの遅れ: グリッドの中央から離れるほど少し遅らせる（最大 0.12 秒）
