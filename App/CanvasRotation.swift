@@ -144,6 +144,8 @@ final class FixedCanvasController<Content: View>: UIViewController {
     private var transitioning = false
     /// UI テストの比較用（-GeodeSystemRotation）: 逆向きに回さず、iOS の回転のまま（四隅が黒く見える従来の動き）
     private let systemRotation = CommandLine.arguments.contains("-GeodeSystemRotation")
+    /// 試験中の方式（-GeodeNoRotationAnimation）: iOS の回転のアニメーションも止め、ウィンドウを一瞬で切り替える
+    private let noRotationAnimation = CommandLine.arguments.contains("-GeodeNoRotationAnimation")
 
     init(rootView: Content) {
         host = UIHostingController(rootView: rootView)
@@ -202,9 +204,13 @@ final class FixedCanvasController<Content: View>: UIViewController {
             return
         }
         transitioning = true
-        // アイコンの向きと配置は、ウィンドウが回り始めるのと同時に、同じ時間をかけて切り替える
-        CanvasOrientation.shared.windowWillRotate(from: placedDegrees, by: delta,
-                                                  duration: coordinator.transitionDuration)
+        if noRotationAnimation { UIView.setAnimationsEnabled(false) }
+        // アイコンの向きと配置は、ウィンドウが回り始めるのと同時に、同じ時間をかけて切り替える。
+        // 回転の準備の最中に SwiftUI の状態を変えないよう、次の周回で始める
+        let from = placedDegrees, duration = coordinator.transitionDuration
+        DispatchQueue.main.async {
+            CanvasOrientation.shared.windowWillRotate(from: from, by: delta, duration: duration)
+        }
         coordinator.animate(alongsideTransition: { [weak self] _ in
             guard let self else { return }
             // iOS がウィンドウを回すのと同じアニメーションの中で、同じ量だけ逆に回す（画面上では動かない）。
@@ -214,6 +220,7 @@ final class FixedCanvasController<Content: View>: UIViewController {
             layer.setValue(current - delta * .pi / 180 + 0.0001, forKeyPath: "transform.rotation.z")
             self.host.view.center = CGPoint(x: size.width / 2, y: size.height / 2)
         }, completion: { [weak self] _ in
+            if self?.noRotationAnimation == true { UIView.setAnimationsEnabled(true) }
             guard let self else { return }
             self.transitioning = false
             // ずらした分と誤差をなくし、ウィンドウの実際の向きで置き直す（アイコンの向きと配置は回り始めに切り替え済み。
