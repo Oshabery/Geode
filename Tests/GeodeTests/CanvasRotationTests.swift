@@ -3,30 +3,38 @@ import UIKit
 import SwiftUI
 @testable import Geode
 
-/// iPad で画面を縦に固定したまま中身だけを回す仕組み
+/// iPad の回転: iOS の回転のアニメーションの代わりに、中身だけを回す仕組み
 final class CanvasRotationTests: XCTestCase {
-    func testDeviceOrientationMapsToRotationAndContentOrientation() {
-        XCTAssertEqual(CanvasRotation.target(for: .portrait)?.degrees, 0)
-        XCTAssertEqual(CanvasRotation.target(for: .landscapeLeft)?.degrees, 90)
-        XCTAssertEqual(CanvasRotation.target(for: .landscapeLeft)?.orientation, .landscapeRight)
-        XCTAssertEqual(CanvasRotation.target(for: .landscapeRight)?.degrees, -90)
-        XCTAssertEqual(CanvasRotation.target(for: .landscapeRight)?.orientation, .landscapeLeft)
-        XCTAssertEqual(CanvasRotation.target(for: .portraitUpsideDown)?.degrees, 180)
+    /// 回転の変換から角度（度）を読む。回転を伴わない大きさの変更は 0
+    func testDegreesOfTransitionTransform() {
+        XCTAssertEqual(CanvasRotation.degrees(of: .identity), 0)
+        XCTAssertEqual(CanvasRotation.degrees(of: CGAffineTransform(rotationAngle: .pi / 2)), 90)
+        XCTAssertEqual(CanvasRotation.degrees(of: CGAffineTransform(rotationAngle: -.pi / 2)), -90)
+        XCTAssertEqual(CanvasRotation.degrees(of: CGAffineTransform(rotationAngle: .pi)), 180)
+        // 誤差があっても 90° 単位に丸める
+        XCTAssertEqual(CanvasRotation.degrees(of: CGAffineTransform(rotationAngle: .pi / 2 + 0.0001)), 90)
     }
 
-    /// 平置き・裏返し・不明のときは向きを変えない
-    func testFlatAndUnknownKeepTheLastOrientation() {
-        XCTAssertNil(CanvasRotation.target(for: .faceUp))
-        XCTAssertNil(CanvasRotation.target(for: .faceDown))
-        XCTAssertNil(CanvasRotation.target(for: .unknown))
-    }
+    /// 回転の瞬間は中身を逆向きに回して前の配置のまま残し、終わったら 0° に戻して配置を切り替える
+    @MainActor
+    func testRotationKeepsTheOldLookThenAnimatesBack() {
+        let canvas = CanvasOrientation.shared
+        canvas.windowResized(to: CGSize(width: 1032, height: 1376))
+        XCTAssertFalse(canvas.isLandscape)
 
-    /// 回る量が少ない方向へ進む（-90 → 180 は 270° ではなく -90° 回る）
-    func testNextAngleTakesTheShortestTurn() {
-        XCTAssertEqual(CanvasRotation.nextAngle(current: 0, target: 90), 90)
-        XCTAssertEqual(CanvasRotation.nextAngle(current: 90, target: -90), -90)
-        XCTAssertEqual(CanvasRotation.nextAngle(current: -90, target: 180), -180)
-        XCTAssertEqual(CanvasRotation.nextAngle(current: 270, target: 0), 360)
+        canvas.windowWillRotate(by: 90)
+        XCTAssertEqual(canvas.degrees, -90)
+        canvas.windowResized(to: CGSize(width: 1376, height: 1032))
+        XCTAssertFalse(canvas.isLandscape, "回転が終わるまでは前の配置のまま")
+
+        canvas.windowDidRotate()
+        XCTAssertEqual(canvas.degrees, 0)
+        XCTAssertTrue(canvas.isLandscape)
+
+        // 回転を伴わない大きさの変更（Split View など）は、そのまま配置だけ切り替える
+        canvas.windowResized(to: CGSize(width: 500, height: 1032))
+        XCTAssertFalse(canvas.isLandscape)
+        XCTAssertEqual(canvas.degrees, 0)
     }
 
     func testQuarterTurnDetection() {
@@ -46,17 +54,5 @@ final class CanvasRotationTests: XCTestCase {
                        EdgeInsets(top: 1, leading: 20, bottom: 2, trailing: 24))
         XCTAssertEqual(CanvasRotation.canvasInsets(p, degrees: 180),
                        EdgeInsets(top: 20, leading: 2, bottom: 24, trailing: 1))
-    }
-
-    /// 中身の座標の傾きを端末の座標に戻すと、GlowMotion.screenGravity の逆になる
-    func testDeviceVectorInvertsScreenGravity() {
-        for orientation in [UIInterfaceOrientation.portrait, .portraitUpsideDown, .landscapeLeft, .landscapeRight] {
-            let device = (x: 0.3, y: -0.7)
-            let screen = GlowMotion.screenGravity(x: device.x, y: device.y, orientation: orientation)
-            let back = CanvasRotation.deviceVector(fromScreen: CGSize(width: screen.x, height: screen.y),
-                                                   orientation: orientation)
-            XCTAssertEqual(back.width, device.x, accuracy: 1e-9, "\(orientation.rawValue)")
-            XCTAssertEqual(back.height, device.y, accuracy: 1e-9, "\(orientation.rawValue)")
-        }
     }
 }

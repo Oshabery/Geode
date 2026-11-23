@@ -1,41 +1,19 @@
 import SwiftUI
 import UIKit
 
-/// iPad を回したとき、画面（ウィンドウ）は縦のまま固定し、Geode の中身（上のボタンとグリッド）だけを回す。
-/// iOS の回転は画面全体を回して伸縮させ、四隅が黒く見えるため（ユーザーの指定）
+/// iPad を回したときの見せ方（ユーザーの指定）。
+/// iOS の回転アニメーションは画面全体を回して伸縮させ、四隅が黒く見える。そこで回転のアニメーションだけを止め、
+/// ウィンドウは一瞬で新しい向きに切り替える。その瞬間、中身（上のボタンとグリッド）を逆向きに回して元の見た目のまま残し、
+/// そこから Geode 自身のアニメーションで、回転・大きさ・アイコンの並びを新しい向きへ動かす。背景は回さない。
+/// シート・キーボード・Split View などは iOS の通常の回転のまま
 enum CanvasRotation {
     /// 回したキャンバスの座標空間の名前（グループの背景がキャンバス全体を覆うために使う）
     static let coordinateSpace = "geodeCanvas"
 
-    /// 端末の向き → 中身を回す角度（度。SwiftUI の rotationEffect と同じく時計回りが正）と、
-    /// 回した中身にとっての画面の向き。平置き・裏返し・不明のときは nil（直前の向きを保つ）
-    static func target(for device: UIDeviceOrientation) -> (degrees: Double, orientation: UIInterfaceOrientation)? {
-        switch device {
-        case .portrait: return (0, .portrait)
-        case .portraitUpsideDown: return (180, .portraitUpsideDown)
-        // 端末の landscapeLeft（ホームボタン側が右）は、画面の向きでは landscapeRight にあたる
-        case .landscapeLeft: return (90, .landscapeRight)
-        case .landscapeRight: return (-90, .landscapeLeft)
-        default: return nil
-        }
-    }
-
-    /// ウィンドウが実際に向いている角度（縦固定が効いていれば 0）。
-    /// 固定が効かずに iOS がウィンドウを回した場合は、その分を差し引いて中身が二重に回らないようにする
-    static func degrees(ofInterface orientation: UIInterfaceOrientation) -> Double {
-        switch orientation {
-        case .portraitUpsideDown: return 180
-        case .landscapeRight: return 90
-        case .landscapeLeft: return -90
-        default: return 0
-        }
-    }
-
-    /// 今の角度から目標の角度へ、回る量が少ない方向で進めた角度（累積値。アニメーションが一周しないように）
-    static func nextAngle(current: Double, target: Double) -> Double {
-        var delta = (target - current).truncatingRemainder(dividingBy: 360)
-        if delta > 180 { delta -= 360 } else if delta <= -180 { delta += 360 }
-        return current + delta
+    /// 回転の変換（`UIViewControllerTransitionCoordinator.targetTransform`）の角度（度、時計回りが正）。
+    /// 回転を伴わない大きさの変更（Split View など）では 0
+    static func degrees(of transform: CGAffineTransform) -> Double {
+        normalized(atan2(Double(transform.b), Double(transform.a)) * 180 / .pi)
     }
 
     /// 角度を 0 / 90 / 180 / -90 のどれかに直す
@@ -53,7 +31,7 @@ enum CanvasRotation {
     /// 90° 回して縦横が入れ替わっているか
     static func isQuarterTurn(_ degrees: Double) -> Bool { abs(normalized(degrees)) == 90 }
 
-    /// 縦固定のウィンドウの安全領域（ステータスバーやホームインジケーター）を、回した中身から見た上下左右に直す
+    /// ウィンドウの安全領域（ステータスバーやホームインジケーター）を、回した中身から見た上下左右に直す
     static func canvasInsets(_ p: EdgeInsets, degrees: Double) -> EdgeInsets {
         switch normalized(degrees) {
         case 90:   // 中身の上 = 画面の右
@@ -64,16 +42,6 @@ enum CanvasRotation {
             return EdgeInsets(top: p.bottom, leading: p.trailing, bottom: p.top, trailing: p.leading)
         default:
             return p
-        }
-    }
-
-    /// 回した中身の座標で表した傾きを、端末の座標に戻す（GlowMotion.screenGravity の逆）
-    static func deviceVector(fromScreen v: CGSize, orientation: UIInterfaceOrientation) -> CGSize {
-        switch orientation {
-        case .portraitUpsideDown: return CGSize(width: -v.width, height: -v.height)
-        case .landscapeRight: return CGSize(width: v.height, height: -v.width)
-        case .landscapeLeft: return CGSize(width: -v.height, height: v.width)
-        default: return v
         }
     }
 }
@@ -90,49 +58,79 @@ extension EnvironmentValues {
     }
 }
 
-/// 端末の向きを見て、中身を回す角度を決める（iPad のみ。iPhone は常に縦）
+/// 中身を回す角度と、どちらの向きの配置を出すかを持つ（iPad のみ。iPhone は常に縦で角度 0）
 @MainActor
 final class CanvasOrientation: ObservableObject {
     static let shared = CanvasOrientation()
 
-    /// 中身を回す角度（累積値）
+    /// 中身をウィンドウに対して回している角度。ふだんは 0。回転の直後だけ逆向きの角度になり、0 へ戻る
     @Published private(set) var degrees: Double = 0
-    /// 回した中身にとっての画面の向き。縦と横の配置の切り替え、グローの傾きの向きに使う
-    @Published private(set) var contentOrientation: UIInterfaceOrientation = .portrait
+    /// 横画面の配置を出すか（ウィンドウが横長か）。回転中は、戻すアニメーションが始まるまで前の向きのまま
+    @Published private(set) var isLandscape = false
 
-    /// 回すときにアニメーションするか。起動して最初に向きが分かったときは、縦から回って見えないようにすぐ合わせる
-    @Published private(set) var animates = false
+    static let animation = Animation.spring(duration: 0.5, bounce: 0.1)
 
-    var isLandscape: Bool { contentOrientation.isLandscape }
+    /// iOS の回転が進行中（ウィンドウは新しい向き、中身は逆向きに回して前の見た目のまま）
+    private var rotating = false
+    /// いまのウィンドウの大きさ
+    private var windowSize: CGSize = .zero
 
-    private init() {
-        guard UIDevice.current.userInterfaceIdiom == .pad else { return }
-        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-        NotificationCenter.default.addObserver(forName: UIDevice.orientationDidChangeNotification,
-                                               object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.update() }
+    private init() {}
+
+    /// iOS がウィンドウを回す直前。中身を逆向きに回して、切り替わった瞬間も前と同じ見た目にする
+    func windowWillRotate(by angle: Double) {
+        rotating = true
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) { degrees = CanvasRotation.normalized(-angle) }
+    }
+
+    /// iOS の回転が終わった。中身を新しい向きへ回し、配置も切り替える
+    func windowDidRotate() {
+        guard rotating else { return }
+        rotating = false
+        let landscape = windowSize.width > windowSize.height
+        withAnimation(Self.animation) {
+            degrees = 0
+            isLandscape = landscape
         }
-        // 起動時に向きが分からない（平置きなど）ときは縦として始める
-        update()
     }
 
-    /// ウィンドウが実際に向いている向き（縦固定が効いていれば縦）
-    var windowOrientation: UIInterfaceOrientation {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first { $0.activationState == .foregroundActive }?
-            .effectiveGeometry.interfaceOrientation ?? .portrait
+    /// ウィンドウの大きさが変わった（起動時、回転、Split View など）
+    func windowResized(to size: CGSize) {
+        windowSize = size
+        // 回転中は windowDidRotate でまとめて切り替える
+        guard !rotating else { return }
+        let landscape = size.width > size.height
+        if landscape != isLandscape { isLandscape = landscape }
     }
+}
 
-    func update() {
-        guard let target = CanvasRotation.target(for: UIDevice.current.orientation) else { return }
-        let wanted = target.degrees - CanvasRotation.degrees(ofInterface: windowOrientation)
-        let next = CanvasRotation.nextAngle(current: degrees, target: wanted)
-        if next != degrees { degrees = next }
-        if target.orientation != contentOrientation { contentOrientation = target.orientation }
-        if !animates {
-            // 最初の向きを反映した描画が済んでから、以後の回転をアニメーションにする
-            DispatchQueue.main.async { self.animates = true }
+/// iOS の回転を受け取り、回転のアニメーションを止めて、中身を Geode 自身で回す。
+/// 画面に何も描かない小さなビュー。見えている UIViewController の子として回転の通知を受ける
+struct RotationHook: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ controller: Controller, context: Context) {}
+
+    final class Controller: UIViewController {
+        override func loadView() {
+            view = UIView()
+            view.isUserInteractionEnabled = false
+            view.backgroundColor = .clear
+        }
+
+        override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+            super.viewWillTransition(to: size, with: coordinator)
+            let angle = CanvasRotation.degrees(of: coordinator.targetTransform)
+            // 回転を伴わない大きさの変更（Split View など）は iOS のまま。
+            // UI テストの比較用（-GeodeSystemRotation）では iOS の回転のアニメーションをそのまま出す
+            guard angle != 0, !CommandLine.arguments.contains("-GeodeSystemRotation") else { return }
+            UIView.setAnimationsEnabled(false)
+            CanvasOrientation.shared.windowWillRotate(by: angle)
+            coordinator.animate(alongsideTransition: nil) { _ in
+                UIView.setAnimationsEnabled(true)
+                CanvasOrientation.shared.windowDidRotate()
+            }
         }
     }
 }

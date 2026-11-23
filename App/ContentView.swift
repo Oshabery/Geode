@@ -34,11 +34,11 @@ struct ContentView: View {
     @AppStorage("glowMotionStrength") private var glowMotionStrength = 1.0
     @State private var editing = false
     @State private var showSettings = false
-    /// iPad の向き。画面（ウィンドウ）は縦に固定し、中身だけをこの角度で回す
+    /// iPad の向き。回転の瞬間だけ中身を逆向きに回し、Geode のアニメーションで新しい向きへ戻す
     @ObservedObject private var canvas = CanvasOrientation.shared
     private let isPad = UIDevice.current.userInterfaceIdiom == .pad
 
-    /// いま使う配置の向き。iPad を横に持っていれば横画面の配置。iPhone は常に縦
+    /// いま使う配置の向き。iPad のウィンドウが横長なら横画面の配置。iPhone は常に縦
     private var orientation: BoardOrientation {
         isPad && canvas.isLandscape ? .landscape : .portrait
     }
@@ -105,8 +105,8 @@ struct ContentView: View {
         }
     }
 
-    /// iPad: 画面は縦に固定したまま、中身だけを端末の向きに合わせて回す。
-    /// 背景はこの外側にあるので回らない。安全領域は回した向きに合わせて付け直す
+    /// iPad: iOS の回転のアニメーション（画面全体が回って四隅が黒く見える）の代わりに、中身だけを回す。
+    /// 背景はこの外側にあるので回らない。安全領域は回した向きに合わせて付け直す（`CanvasRotation`）
     private var rotatingCanvas: some View {
         GeometryReader { geo in
             let insets = geo.safeAreaInsets
@@ -123,11 +123,11 @@ struct ContentView: View {
                 .frame(width: full.width, height: full.height)
                 // GeometryReader の原点は安全領域の内側なので、画面全体の中央に置き直す
                 .position(x: full.width / 2 - insets.leading, y: full.height / 2 - insets.top)
-                .animation(canvas.animates ? .spring(duration: 0.5, bounce: 0.1) : nil, value: canvas.degrees)
-                // 縦固定が効かずに iOS がウィンドウを回した場合、向きの通知はウィンドウが回る前に届くので、
-                // ウィンドウの大きさが変わった後にもう一度角度を決め直す（二重に回らないように）
-                .onChange(of: geo.size) { _, _ in canvas.update() }
+                .onAppear { canvas.windowResized(to: full) }
+                .onChange(of: full) { _, size in canvas.windowResized(to: size) }
         }
+        // iOS の回転を受け取る（回転のアニメーションを止め、中身を Geode が回す）
+        .background { RotationHook().frame(width: 0, height: 0) }
     }
 
     var body: some View {
@@ -151,11 +151,7 @@ struct ContentView: View {
         // オンにすると Geode のタッチを優先する（代わりにホームへ戻るには下端を 2 回スワイプする）
         .defersSystemGestures(on: preferBottomTouches ? .bottom : [])
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                store.refreshDirectStates()
-                // 裏にいる間に向きが変わっていても合わせる
-                if isPad { canvas.update() }
-            }
+            if phase == .active { store.refreshDirectStates() }
             updateGlowMotion()
         }
         .onChange(of: uiStyle) { _, _ in updateGlowMotion() }
