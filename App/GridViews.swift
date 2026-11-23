@@ -91,6 +91,9 @@ enum GridDefaults {
 
 struct GridCells<Cell: View>: View {
     let metrics: GridMetrics
+    /// マスの中身の識別子（指定すると、配置が変わったときに同じアイコンが新しい位置へ動いて見える）。
+    /// 指定しなければマスの番号で識別する
+    var itemID: ((Int) -> AnyHashable)? = nil
     @ViewBuilder let cell: (Int) -> Cell
 
     var body: some View {
@@ -100,6 +103,7 @@ struct GridCells<Cell: View>: View {
                 cell(slot)
                     .frame(width: metrics.cellSize.width, height: metrics.cellSize.height, alignment: .top)
                     .position(metrics.center(slot))
+                    .id(itemID?(slot) ?? AnyHashable(slot))
             }
         }
     }
@@ -456,7 +460,10 @@ struct LauncherGridView: View {
                                       labelSpacing: labelSpacing, outerMargin: outerMargin, offsetY: gridOffsetY)
             ZStack {
                 if showGridLines { GridLines(metrics: metrics) }
-                GridCells(metrics: metrics) { slot in
+                // iPad を回して縦と横の配置が切り替わるとき、同じアイコンが新しい位置へ動いて見えるよう、中身で識別する
+                GridCells(metrics: metrics, itemID: { slot in
+                    pageSlots[slot].map { AnyHashable($0.id) } ?? AnyHashable("empty-\(slot)")
+                }) { slot in
                     TileView(item: pageSlots[slot], metrics: metrics,
                              highlighted: openGroup == nil && highlighted == slot,
                              switchState: pageSlots[slot].flatMap(store.switchState(for:)),
@@ -515,6 +522,8 @@ struct LauncherGridView: View {
                 )
             }
             .animation(openGroup != nil ? Self.openAnimation : Self.closeAnimation, value: openGroup?.id)
+            // 縦と横の配置が切り替わるとき、アイコンをなめらかに新しい位置へ動かす
+            .animation(.spring(duration: 0.45, bounce: 0.1), value: orientation)
             .animation(.easeOut(duration: 0.1), value: highlighted)
         }
         // 開いている間は ContentView がこのビューを最前面に描く（背景が下のボタンも覆えるように）

@@ -67,6 +67,12 @@ struct ContentView: View {
         }
     }
 
+    /// 回転中に見える四隅を埋める色（背景の地の色）
+    private var rotationUnderlay: Color {
+        if isGlow { return glowLight ? Color(white: 0.95) : Color(white: 0.04) }
+        return useCustomBackground ? backgroundColor.color : Color(.systemBackground)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -113,6 +119,16 @@ struct ContentView: View {
             } else {
                 (useCustomBackground ? backgroundColor.color : Color(.systemBackground)).ignoresSafeArea()
             }
+        }
+        .background {
+            // iPad を回すと、iOS が画面全体を回転させる間、ウィンドウの外側（四隅）が黒く見える。
+            // ウィンドウより大きく（画面の対角線の長さの正方形）背景の地の色を敷いて、その部分を埋める
+            let screen = UIScreen.main.bounds.size
+            let side = (screen.width * screen.width + screen.height * screen.height).squareRoot() * 1.1
+            rotationUnderlay
+                .frame(width: side, height: side)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
         }
         .tint(tint)
         .preferredColorScheme(scheme)
