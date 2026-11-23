@@ -116,13 +116,17 @@ struct ContentView: View {
             let canvasSize = quarter ? CGSize(width: full.height, height: full.width) : full
             mainContent
                 .padding(CanvasRotation.canvasInsets(insets, degrees: canvas.degrees))
+                .environment(\.geodeCanvasSize, canvasSize)
                 .frame(width: canvasSize.width, height: canvasSize.height)
                 .coordinateSpace(name: CanvasRotation.coordinateSpace)
                 .rotationEffect(.degrees(canvas.degrees))
                 .frame(width: full.width, height: full.height)
                 // GeometryReader の原点は安全領域の内側なので、画面全体の中央に置き直す
                 .position(x: full.width / 2 - insets.leading, y: full.height / 2 - insets.top)
-                .animation(.spring(duration: 0.5, bounce: 0.1), value: canvas.degrees)
+                .animation(canvas.animates ? .spring(duration: 0.5, bounce: 0.1) : nil, value: canvas.degrees)
+                // 縦固定が効かずに iOS がウィンドウを回した場合、向きの通知はウィンドウが回る前に届くので、
+                // ウィンドウの大きさが変わった後にもう一度角度を決め直す（二重に回らないように）
+                .onChange(of: geo.size) { _, _ in canvas.update() }
         }
     }
 
@@ -147,7 +151,11 @@ struct ContentView: View {
         // オンにすると Geode のタッチを優先する（代わりにホームへ戻るには下端を 2 回スワイプする）
         .defersSystemGestures(on: preferBottomTouches ? .bottom : [])
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { store.refreshDirectStates() }
+            if phase == .active {
+                store.refreshDirectStates()
+                // 裏にいる間に向きが変わっていても合わせる
+                if isPad { canvas.update() }
+            }
             updateGlowMotion()
         }
         .onChange(of: uiStyle) { _, _ in updateGlowMotion() }

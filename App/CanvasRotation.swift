@@ -78,6 +78,18 @@ enum CanvasRotation {
     }
 }
 
+/// 回したキャンバスの大きさ（iPad のみ。iPhone では nil）。グループの背景がキャンバス全体を覆うために使う
+private struct CanvasSizeKey: EnvironmentKey {
+    static let defaultValue: CGSize? = nil
+}
+
+extension EnvironmentValues {
+    var geodeCanvasSize: CGSize? {
+        get { self[CanvasSizeKey.self] }
+        set { self[CanvasSizeKey.self] = newValue }
+    }
+}
+
 /// 端末の向きを見て、中身を回す角度を決める（iPad のみ。iPhone は常に縦）
 @MainActor
 final class CanvasOrientation: ObservableObject {
@@ -87,6 +99,9 @@ final class CanvasOrientation: ObservableObject {
     @Published private(set) var degrees: Double = 0
     /// 回した中身にとっての画面の向き。縦と横の配置の切り替え、グローの傾きの向きに使う
     @Published private(set) var contentOrientation: UIInterfaceOrientation = .portrait
+
+    /// 回すときにアニメーションするか。起動して最初に向きが分かったときは、縦から回って見えないようにすぐ合わせる
+    @Published private(set) var animates = false
 
     var isLandscape: Bool { contentOrientation.isLandscape }
 
@@ -115,5 +130,9 @@ final class CanvasOrientation: ObservableObject {
         let next = CanvasRotation.nextAngle(current: degrees, target: wanted)
         if next != degrees { degrees = next }
         if target.orientation != contentOrientation { contentOrientation = target.orientation }
+        if !animates {
+            // 最初の向きを反映した描画が済んでから、以後の回転をアニメーションにする
+            DispatchQueue.main.async { self.animates = true }
+        }
     }
 }

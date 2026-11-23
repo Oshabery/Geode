@@ -416,6 +416,8 @@ struct LauncherGridView: View {
     /// どちらの向きの配置を表示・操作するか（iPad の横画面は別の配置）
     let orientation: BoardOrientation
     @EnvironmentObject private var store: BoardStore
+    /// iPad の回したキャンバスの大きさ（iPhone では nil）
+    @Environment(\.geodeCanvasSize) private var canvasSize
     @AppStorage("showLabels") private var showLabels = true
     @AppStorage("gridGap") private var gridGapX = GridDefaults.gapX
     @AppStorage("gridGapY") private var gridGapY = GridDefaults.gapY
@@ -491,7 +493,11 @@ struct LauncherGridView: View {
                     GroupBackdrop(gridFrame: geo.frame(in: .global),
                                   focus: groupSlot.map { metrics.center($0) },
                                   light: isGlowLight,
-                                  canvas: geo.bounds(of: .named(CanvasRotation.coordinateSpace)))
+                                  canvas: canvasSize.map { size in
+                                      // キャンバスの原点（グリッドの座標）と大きさ
+                                      let f = geo.frame(in: .named(CanvasRotation.coordinateSpace))
+                                      return CGRect(x: -f.minX, y: -f.minY, width: size.width, height: size.height)
+                                  })
                         .transition(.opacity)
                         .zIndex(1)
                     // グループの中身: グループのマスから外へ広がるように、近いものから順に出てくる。

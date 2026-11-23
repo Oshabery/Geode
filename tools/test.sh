@@ -18,8 +18,8 @@ mkdir -p build
 
 # 使う端末（iPhone / iPad）と、結果のファイル名
 case "${GEODE_DEVICE:-iphone}" in
-  iphone|iPhone) FAMILY=iPhone; NAME="$MODE" ;;
-  ipad|iPad)     FAMILY=iPad;   NAME="$MODE-ipad" ;;
+  iphone|iPhone) FAMILY=iPhone; NAME="${MODE}" ;;
+  ipad|iPad)     FAMILY=iPad;   NAME="${MODE}-ipad" ;;
   *) echo "GEODE_DEVICE は iphone か ipad です"; exit 2 ;;
 esac
 
@@ -43,20 +43,20 @@ for runtime in sorted(devices, key=version, reverse=True):
         if d["name"].startswith(sys.argv[1]):
             print(d["udid"]); sys.exit(0)
 sys.exit(sys.argv[1] + " のシミュレータが見つかりません")
-' "$FAMILY")
-DEST="platform=iOS Simulator,id=$DEVICE_ID"
-echo "シミュレータ（$FAMILY）: $DEVICE_ID"
+' "${FAMILY}")
+DEST="platform=iOS Simulator,id=${DEVICE_ID}"
+echo "シミュレータ（${FAMILY}）: ${DEVICE_ID}"
 
 # 先にシミュレータを起動しきっておく。起動途中に UI テストがアプリを立ち上げると、
 # 「Timed out while launching application」で失敗することがある（CI の起動直後の端末で発生）
-if [ "$MODE" = ui ] || [ "$MODE" = all ]; then
-  xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
-  xcrun simctl bootstatus "$DEVICE_ID" -b > /dev/null
+if [ "${MODE}" = ui ] || [ "${MODE}" = all ]; then
+  xcrun simctl boot "${DEVICE_ID}" 2>/dev/null || true
+  xcrun simctl bootstatus "${DEVICE_ID}" -b > /dev/null
 fi
 
 ACTION=test
 ONLY=()
-case "$MODE" in
+case "${MODE}" in
   unit)  ONLY=(-only-testing:GeodeTests) ;;
   ui)    ONLY=(-only-testing:GeodeUITests) ;;
   all)   ;;
@@ -64,7 +64,7 @@ case "$MODE" in
   *) echo "使い方: $0 [unit|ui|all|build]"; exit 2 ;;
 esac
 
-RESULT="build/$NAME.xcresult"
+RESULT="build/${NAME}.xcresult"
 rm -rf "$RESULT"
 set +e
 xcodebuild "$ACTION" \
@@ -74,33 +74,33 @@ xcodebuild "$ACTION" \
   -resultBundlePath "$RESULT" \
   ${ONLY[@]+"${ONLY[@]}"} \
   CODE_SIGNING_ALLOWED=NO \
-  > "build/$NAME.log" 2>&1
+  > "build/${NAME}.log" 2>&1
 STATUS=$?
 set -e
 
 # 要点だけ表示する（全文は build/<mode>.log）
-grep -E "error:|Test Case .*(passed|failed|skipped)|Executed [0-9]+ test|\*\* (BUILD|TEST) (SUCCEEDED|FAILED) \*\*" "build/$NAME.log" || true
+grep -E "error:|Test Case .*(passed|failed|skipped)|Executed [0-9]+ test|\*\* (BUILD|TEST) (SUCCEEDED|FAILED) \*\*" "build/${NAME}.log" || true
 
 # 失敗したときは、原因を追えるようにログの末尾と使えるシミュレータを表示する
 # （CI ではログファイルを開けないため、ここに出さないと詳細が分からない）
 if [ $STATUS -ne 0 ]; then
   [ -n "${GITHUB_ACTIONS:-}" ] && echo "::group::xcodebuild のログ（末尾 80 行）"
-  echo "---- build/$NAME.log の末尾 ----"
-  tail -n 80 "build/$NAME.log"
+  echo "---- build/${NAME}.log の末尾 ----"
+  tail -n 80 "build/${NAME}.log"
   [ -n "${GITHUB_ACTIONS:-}" ] && echo "::endgroup::"
   [ -n "${GITHUB_ACTIONS:-}" ] && echo "::group::使えるシミュレータ"
-  echo "---- 使えるシミュレータ（選んだもの: $DEVICE_ID）----"
-  xcrun simctl list devices available | grep -E "^-- |$FAMILY" || true
+  echo "---- 使えるシミュレータ（選んだもの: ${DEVICE_ID}）----"
+  xcrun simctl list devices available | grep -E "^-- |${FAMILY}" || true
   [ -n "${GITHUB_ACTIONS:-}" ] && echo "::endgroup::"
 fi
 
 # UI Test の画面を取り出す
-if [ "$MODE" = ui ] || [ "$MODE" = all ]; then
+if [ "${MODE}" = ui ] || [ "${MODE}" = all ]; then
   SHOTS=build/screenshots
-  [ "$FAMILY" = iPad ] && SHOTS=build/screenshots-ipad
-  rm -rf "$SHOTS"
-  if xcrun xcresulttool export attachments --path "$RESULT" --output-path "$SHOTS" >/dev/null 2>&1; then
-    echo "画面: $SHOTS/"
+  [ "${FAMILY}" = iPad ] && SHOTS=build/screenshots-ipad
+  rm -rf "${SHOTS}"
+  if xcrun xcresulttool export attachments --path "$RESULT" --output-path "${SHOTS}" >/dev/null 2>&1; then
+    echo "画面: ${SHOTS}/"
   fi
 fi
 
