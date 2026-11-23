@@ -96,14 +96,23 @@ struct GridCells<Cell: View>: View {
     var itemID: ((Int) -> AnyHashable)? = nil
     @ViewBuilder let cell: (Int) -> Cell
 
+    private struct Entry: Identifiable {
+        let id: AnyHashable
+        let slot: Int
+    }
+
+    /// ForEach の識別子に中身の ID を使うことで、同じアイテムが別のマスへ移ったときに「移動」としてアニメーションする
+    private var entries: [Entry] {
+        (0..<metrics.layout.capacity).map { Entry(id: itemID?($0) ?? AnyHashable($0), slot: $0) }
+    }
+
     var body: some View {
         ZStack {
             Color.clear
-            ForEach(0..<metrics.layout.capacity, id: \.self) { slot in
-                cell(slot)
+            ForEach(entries) { entry in
+                cell(entry.slot)
                     .frame(width: metrics.cellSize.width, height: metrics.cellSize.height, alignment: .top)
-                    .position(metrics.center(slot))
-                    .id(itemID?(slot) ?? AnyHashable(slot))
+                    .position(metrics.center(entry.slot))
             }
         }
     }
