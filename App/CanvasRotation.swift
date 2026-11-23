@@ -69,6 +69,11 @@ private struct IconAngleKey: EnvironmentKey {
     static let defaultValue: Double = 0
 }
 
+/// 向きが変わるたびに増える番号。変わるとアイコンが一度消えて、ぷよっと出直す（`OrientationReveal`。iPhone では変わらない）
+private struct RevealTokenKey: EnvironmentKey {
+    static let defaultValue: Int = 0
+}
+
 extension EnvironmentValues {
     var geodeCanvasSize: CGSize? {
         get { self[CanvasSizeKey.self] }
@@ -78,6 +83,11 @@ extension EnvironmentValues {
     var geodeIconAngle: Double {
         get { self[IconAngleKey.self] }
         set { self[IconAngleKey.self] = newValue }
+    }
+
+    var geodeRevealToken: Int {
+        get { self[RevealTokenKey.self] }
+        set { self[RevealTokenKey.self] = newValue }
     }
 }
 
@@ -91,6 +101,12 @@ final class CanvasOrientation: ObservableObject {
     @Published private(set) var iconDegrees: Double = 0
     /// 横画面の配置を出すか（ウィンドウが端末に対して 90° 回っているか）
     @Published private(set) var isLandscape = false
+    /// 向きが変わるたびに増える番号（アイコンの出直しのきっかけ）
+    @Published private(set) var revealToken = 0
+    /// 最初に向きが分かったとき（起動時）は出直しのアニメーションをしない
+    private var known = false
+    /// 最後に向きが変わった時刻（向きの変化で作り直された編集画面が、出直しのアニメーションをするかの判断に使う）
+    private(set) var lastReveal = Date.distantPast
 
     private init() {}
 
@@ -99,13 +115,18 @@ final class CanvasOrientation: ObservableObject {
     func windowRotated(to degrees: Double) {
         let next = CanvasRotation.nextAngle(current: iconDegrees, target: CanvasRotation.normalized(degrees))
         let landscape = CanvasRotation.isQuarterTurn(degrees)
-        guard next != iconDegrees || landscape != isLandscape else { return }
+        guard next != iconDegrees || landscape != isLandscape else { known = true; return }
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             iconDegrees = next
             isLandscape = landscape
+            if known {
+                revealToken &+= 1
+                lastReveal = Date()
+            }
         }
+        known = true
     }
 }
 
@@ -251,5 +272,77 @@ final class FixedCanvasController<Content: View>: UIViewController {
             // ウィンドウの実際の向きで置き直す（180° のように大きさが変わらないときや、食い違っていたときはここで直る）
             self.place(windowDegrees: self.windowDegrees)
         })
+    }
+}
+
+// MARK: アイコンの出直し
+
+/// 向きが変わったとき、アイコンを一度消してから、ぷよっと弾むように出す（ユーザーの指定）。
+/// 出だしと終わりをなめらかにしたカーブ（イーズインアウト）で、横に広がる → 縦に伸びる → 落ち着く、を繰り返して止まる。
+/// 縦と横で並びも向きも変わるので、動かして見せるより、いったん消して出し直す方が自然に見えるため
+struct OrientationReveal: ViewModifier {
+    /// 変わるとアニメーションが始まる番号（`geodeRevealToken`）
+    let token: Int
+    /// 出始めるまでの遅れ（秒）。中央から外へ、少しずつ遅らせて波のように出す
+    var delay: Double = 0
+    /// 向きの変化で作り直された直後にも出直す（編集画面は向きが変わると作り直すため、番号の変化では動かない）
+    var onAppear = false
+    @State private var appearCount = 0
+
+    struct Value {
+        var scaleX = 1.0
+        var scaleY = 1.0
+        var opacity = 1.0
+    }
+
+    /// 消えている間の大きさ
+    static let hiddenScale = 0.35
+    /// 消えたままでいる時間（秒）。画面の切り替わりと同時に消え、少しおいてから出る
+    static let hold = 0.06
+
+    func body(content: Content) -> some View {
+        content.keyframeAnimator(initialValue: Value(), trigger: token &* 1000 &+ appearCount) { view, value in
+            view
+                .scaleEffect(x: value.scaleX, y: value.scaleY)
+                .opacity(value.opacity)
+        } keyframes: { _ in
+            let wait = Self.hold + delay
+            KeyframeTrack(\.opacity) {
+                MoveKeyframe(0)
+                LinearKeyframe(0, duration: wait)
+                CubicKeyframe(1, duration: 0.16)
+            }
+            KeyframeTrack(\.scaleX) {
+                MoveKeyframe(Self.hiddenScale)
+                LinearKeyframe(Self.hiddenScale, duration: wait)
+                CubicKeyframe(1.14, duration: 0.17)   // 横にふくらむ
+                CubicKeyframe(0.93, duration: 0.12)
+                CubicKeyframe(1.03, duration: 0.11)
+                CubicKeyframe(1.0, duration: 0.12)
+            }
+            KeyframeTrack(\.scaleY) {
+                MoveKeyframe(Self.hiddenScale)
+                LinearKeyframe(Self.hiddenScale, duration: wait)
+                CubicKeyframe(0.88, duration: 0.17)   // 縦はつぶれる
+                CubicKeyframe(1.07, duration: 0.12)
+                CubicKeyframe(0.98, duration: 0.11)
+                CubicKeyframe(1.0, duration: 0.12)
+            }
+        }
+        .onAppear { startIfJustRotated() }
+    }
+
+    /// 作り直された直後に呼ぶ: 向きが変わったばかりなら出直しのアニメーションを始める
+    @MainActor
+    private func startIfJustRotated() {
+        guard onAppear, Date().timeIntervalSince(CanvasOrientation.shared.lastReveal) < 0.4 else { return }
+        appearCount &+= 1
+    }
+
+    /// マスごとの遅れ: グリッドの中央から離れるほど少し遅らせる（最大 0.12 秒）
+    static func delay(slot: Int, layout: GridLayout) -> Double {
+        let row = Double(slot / layout.columns), column = Double(slot % layout.columns)
+        let dr = row - Double(layout.rows - 1) / 2, dc = column - Double(layout.columns - 1) / 2
+        return min(0.12, (dr * dr + dc * dc).squareRoot() * 0.025)
     }
 }

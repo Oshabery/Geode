@@ -172,6 +172,7 @@ struct ContentView: View {
             .coordinateSpace(name: CanvasRotation.coordinateSpace)
         }
         .environment(\.geodeIconAngle, canvas.iconDegrees)
+        .environment(\.geodeRevealToken, canvas.revealToken)
         .environmentObject(store)
         .tint(tint)
         .preferredColorScheme(scheme)
