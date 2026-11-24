@@ -50,7 +50,8 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 | `App/CatalogStore.swift` | 辞書全体（内蔵 + ユーザー登録 + 実機一覧）、非表示の管理 |
 | `App/AppPicker.swift` | アプリ選択、非表示の項目、辞書への登録フォーム |
 | `App/IconService.swift` | iTunes Search API からアイコン取得 |
-| `App/ContentView.swift` | 上部バー（歯車 / 鉛筆）と設定画面 |
+| `App/ContentView.swift` | 上部バー（歯車 / 鉛筆）、iPad の動かさないキャンバス |
+| `App/SettingsView.swift` | 設定画面（固定のプレビュー、グループ分けした一覧、1 つ下の画面） |
 | `App/DockBar.swift` | 画面下部の 3 つのボタン |
 | `App/SystemActions.swift` | 本体の操作（ライト・明るさ・ミュージックなどは Geode で直接、消音・Wi-Fi などはショートカット経由）と選択画面 |
 | `Shared/HSBColor.swift` | HSB カラー（アプリとウィジェット共通） |
@@ -96,7 +97,7 @@ xcodebuild -project Geode.xcodeproj -scheme Geode -destination 'generic/platform
 
 ## 作業の進め方
 
-- 設定画面の各まとまりは `SettingsGroup`（折りたたみ、開閉状態は `settingsOpen.<id>` に保存、最初は閉じている）で作る
+- 設定画面（`App/SettingsView.swift`）はユーザーと決めたデザイン（デザインのキャンバス「Geode 設定画面の調整」の「案 3 改」）に合わせる: 一番上にプレビュー（`SettingsPreview`、盤面の左上 8 個をいまの設定で描く）を `.safeAreaInset(edge: .top)` で固定し、一覧をスクロールしても動かさない（ユーザーの指定）。一覧は iOS の設定と同じグループ分けで、各行に今の値を出し、細かい調整は 1 つ下の画面（`SizeSettingsPage` / `LabelGridSettingsPage` / `ColorSettingPage`）へ。グローを選んでいる間は外観モード・背景色・UI の色を出さず、グロー専用の「光の色」（単色 / グラデ / モノトーンの切り替え、プリセット、虹色のバーの色相 `HueSlider`、光の強さ）と「動き」を出す。以前の折りたたみ式（`SettingsGroup`）はやめた
 
 - 署名・証明書・プロビジョニング、Bundle ID、Entitlements・Capabilities、App Store / TestFlight への提出や配信、課金、保存データを消す・作り直す変更は、入れる前に内容を説明してユーザーの承認を得る
 - ユーザーは設定で調整できることを好む。見た目の値を決め打ちにする前に、設定項目にするか検討する
