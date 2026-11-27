@@ -61,6 +61,10 @@ jobs:
         run: brew install xcodegen
       - name: Run UI tests
         run: ./tools/test.sh ui
+      # iPad: 画面を縦に固定したまま中身だけが回るかを確かめる（iPhone の結果に関係なく実行する）
+      - name: Run UI tests (iPad)
+        if: success() || failure()
+        run: GEODE_DEVICE=ipad ./tools/test.sh ui
       - name: Upload results and screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -69,4 +73,9 @@ jobs:
           path: |
             build/ui.log
             build/screenshots
+            build/ui-ipad.log
+            build/ui-ipad.mp4
+            build/ui-ipad-video.log
+            build/ui-ipad-video-start.txt
+            build/screenshots-ipad
           if-no-files-found: ignore

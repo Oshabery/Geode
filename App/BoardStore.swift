@@ -68,7 +68,11 @@ final class BoardStore: ObservableObject {
             result.append(item)
             result.append(contentsOf: item.children.values)
         }
-        return result.filter { SystemActions.isSwitch($0) && SystemActions.directKind($0.urlString) == nil }
+        // 横の配置は縦のコピーとして同じアイテムを持つので、1 つにまとめる
+        var seen = Set<UUID>()
+        return result.filter {
+            SystemActions.isSwitch($0) && SystemActions.directKind($0.urlString) == nil && seen.insert($0.id).inserted
+        }
     }
 
     /// 盤面で使われている「Geode で直接」のスイッチの実際の状態を読み直す。
@@ -173,7 +177,7 @@ final class BoardStore: ObservableObject {
     // MARK: 自動検出
 
     /// 検出できたアプリを空きマスへ一括配置。追加件数を返す。
-    func addDetectedApps() async -> Int {
+    func addDetectedApps(for orientation: BoardOrientation = .portrait) async -> Int {
         var existing = Set<String>()
         for item in board.topLevelItems {
             existing.insert(item.urlString)
@@ -181,10 +185,12 @@ final class BoardStore: ObservableObject {
         }
         var added = 0
         for app in CatalogStore.shared.detected where !existing.contains(app.scheme) {
-            guard let free = (0..<board.layout.capacity).first(where: { board.slots[$0] == nil }) else { break }
+            var page = board.slots(for: orientation)
+            guard let free = (0..<board.layout(for: orientation).capacity).first(where: { page[$0] == nil }) else { break }
             var item = LaunchItem(kind: .action, name: app.name, urlString: app.scheme, symbol: app.symbol)
             item.iconFile = await IconService.icon(for: app)
-            board.slots[free] = item
+            page[free] = item
+            board.setSlots(page, for: orientation)
             added += 1
         }
         return added
@@ -192,40 +198,12 @@ final class BoardStore: ObservableObject {
 
     // MARK: レイアウト
 
-    /// 行列数を変更。収まらない場合は false。
+    /// 行列数を変更（縦と横で共通。iPad の横画面の配置も一緒に移す）。どちらかが収まらない場合は変えずに false。
     func applyLayout(_ new: GridLayout) -> Bool {
-        let old = board.layout
-        guard var top = Self.remap(board.slots, from: old, to: new, reserved: nil) else { return false }
-        for (slot, item) in top where item.kind == .group {
-            guard let kids = Self.remap(item.children, from: old, to: new, reserved: slot) else { return false }
-            top[slot]?.children = kids
-        }
         var b = board
-        b.layout = new
-        b.slots = top
+        guard b.changeLayout(to: new) else { return false }
         board = b
         return true
-    }
-
-    private static func remap(_ slots: [Int: LaunchItem], from old: GridLayout, to new: GridLayout,
-                              reserved: Int?) -> [Int: LaunchItem]? {
-        var result: [Int: LaunchItem] = [:]
-        var overflow: [LaunchItem] = []
-        for (i, item) in slots.sorted(by: { $0.key < $1.key }) {
-            let r = i / old.columns, c = i % old.columns
-            let target = r * new.columns + c
-            if r < new.rows, c < new.columns, target != reserved {
-                result[target] = item
-            } else {
-                overflow.append(item)
-            }
-        }
-        for item in overflow {
-            guard let free = (0..<new.capacity).first(where: { result[$0] == nil && $0 != reserved })
-            else { return nil }
-            result[free] = item
-        }
-        return result
     }
 
     private func cleanUpIcons() {

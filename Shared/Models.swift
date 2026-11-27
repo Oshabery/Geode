@@ -32,16 +32,105 @@ struct GridLayout: Codable, Hashable {
     var capacity: Int { columns * rows }
 }
 
+/// 盤面の向き。iPad の横画面だけ別の配置を持てる（iPhone は常に縦）
+enum BoardOrientation: Hashable {
+    case portrait, landscape
+}
+
 struct Board: Codable {
     var layout = GridLayout()
     var slots: [Int: LaunchItem] = [:]
     /// 画面下部の 3 つのボタン（0...2）。既存の board.json に無くても読めるよう Optional
     var dock: [Int: LaunchItem]? = nil
+    /// iPad の横画面のアイコンの配置。グリッド（行と列）は縦と共通で、アイコンの位置だけが縦と別。
+    /// nil の間は縦の配置と同じ。横画面で最初に編集したときに保存する。既存の board.json に無くても読めるよう Optional
+    var landscapeSlots: [Int: LaunchItem]? = nil
+    /// landscapeSlots が「縦と同じ行と列のグリッド」用に保存されたものか。
+    /// 以前（横画面で行と列を入れ替えていた頃）に保存した横の配置はマス番号の意味が違うので使わない（データは消さずに残す）
+    var landscapeSharesGrid: Bool? = nil
+    /// 以前の版で保存していた横画面の行と列（今は使わない。読み書きできるように残す）
+    var landscapeLayout: GridLayout? = nil
 
     static let dockCount = 3
 
-    /// グリッドとドックの全アイテム（グループの中身は含まない）
-    var topLevelItems: [LaunchItem] { Array(slots.values) + Array((dock ?? [:]).values) }
+    /// iPad で設定できる行・列の範囲（横画面の配置もこの範囲に収める）
+    static let padColumns = 2...8
+    static let padRows = 3...10
+
+    /// グリッド（縦・横）とドックの全アイテム（グループの中身は含まない）。
+    /// 横の配置は縦の配置のコピーとして始まるので、同じアイテムが 2 回入ることがある
+    var topLevelItems: [LaunchItem] {
+        Array(slots.values) + Array((landscapeSlots ?? [:]).values) + Array((dock ?? [:]).values)
+    }
+
+    // MARK: 向きごとの配置
+
+    /// 横画面用の配置を持っているか（今のグリッド用に保存されたものだけ）
+    var hasLandscapeArrangement: Bool { landscapeSharesGrid == true && landscapeSlots != nil }
+
+    /// 行と列は縦と横で共通
+    func layout(for orientation: BoardOrientation) -> GridLayout { layout }
+
+    /// 向きごとのアイコンの配置。横の配置がまだ無ければ縦と同じ
+    func slots(for orientation: BoardOrientation) -> [Int: LaunchItem] {
+        if orientation == .landscape, hasLandscapeArrangement, let landscape = landscapeSlots { return landscape }
+        return slots
+    }
+
+    /// 向きごとの配置を書き換える。横画面を初めて書き換えたときから、横は縦と別の配置になる
+    mutating func setSlots(_ newSlots: [Int: LaunchItem], for orientation: BoardOrientation) {
+        switch orientation {
+        case .portrait:
+            slots = newSlots
+        case .landscape:
+            landscapeSlots = newSlots
+            landscapeSharesGrid = true
+        }
+    }
+
+    /// 行列数を変える（縦と横で共通なので、横画面の配置も一緒に移す）。同じ行・列の位置へ移し、
+    /// はみ出したものは空きマスへ詰める。どちらかが収まらない場合は変えずに false
+    mutating func changeLayout(to new: GridLayout) -> Bool {
+        guard let portrait = Self.remapPage(slots, from: layout, to: new) else { return false }
+        if hasLandscapeArrangement, let landscape = landscapeSlots {
+            guard let moved = Self.remapPage(landscape, from: layout, to: new) else { return false }
+            landscapeSlots = moved
+        }
+        layout = new
+        slots = portrait
+        return true
+    }
+
+    /// 1 画面分の配置（グループの中身も）を新しい行列数へ移す。収まらない場合は nil
+    static func remapPage(_ slots: [Int: LaunchItem], from old: GridLayout, to new: GridLayout) -> [Int: LaunchItem]? {
+        guard var top = remap(slots, from: old, to: new, reserved: nil) else { return nil }
+        for (slot, item) in top where item.kind == .group {
+            guard let kids = remap(item.children, from: old, to: new, reserved: slot) else { return nil }
+            top[slot]?.children = kids
+        }
+        return top
+    }
+
+    private static func remap(_ slots: [Int: LaunchItem], from old: GridLayout, to new: GridLayout,
+                              reserved: Int?) -> [Int: LaunchItem]? {
+        var result: [Int: LaunchItem] = [:]
+        var overflow: [LaunchItem] = []
+        for (i, item) in slots.sorted(by: { $0.key < $1.key }) {
+            let r = i / old.columns, c = i % old.columns
+            let target = r * new.columns + c
+            if r < new.rows, c < new.columns, target != reserved {
+                result[target] = item
+            } else {
+                overflow.append(item)
+            }
+        }
+        for item in overflow {
+            guard let free = (0..<new.capacity).first(where: { result[$0] == nil && $0 != reserved })
+            else { return nil }
+            result[free] = item
+        }
+        return result
+    }
 
     func find(_ id: UUID) -> LaunchItem? {
         for item in topLevelItems {
@@ -51,25 +140,35 @@ struct Board: Codable {
         return nil
     }
 
-    /// 通知バッジを外す（グリッド・グループの中・ドックのどこにあっても）。外したら true
+    /// 通知バッジを外す（縦・横のグリッド・グループの中・ドックのどこにあっても、同じアイテムをすべて）。外したら true
     @discardableResult
     mutating func clearBadge(_ id: UUID) -> Bool {
+        var cleared = Self.clearBadge(id, in: &slots)
+        if var landscape = landscapeSlots {
+            if Self.clearBadge(id, in: &landscape) { cleared = true }
+            landscapeSlots = landscape
+        }
+        if var docked = dock {
+            if Self.clearBadge(id, in: &docked) { cleared = true }
+            dock = docked
+        }
+        return cleared
+    }
+
+    private static func clearBadge(_ id: UUID, in slots: inout [Int: LaunchItem]) -> Bool {
+        var cleared = false
         for key in slots.keys {
             if slots[key]?.id == id, slots[key]?.showBadge != nil {
                 slots[key]?.showBadge = nil
-                return true
+                cleared = true
             }
             if let childKey = slots[key]?.children.first(where: { $0.value.id == id })?.key,
                slots[key]?.children[childKey]?.showBadge != nil {
                 slots[key]?.children[childKey]?.showBadge = nil
-                return true
+                cleared = true
             }
         }
-        if let key = dock?.first(where: { $0.value.id == id })?.key, dock?[key]?.showBadge != nil {
-            dock?[key]?.showBadge = nil
-            return true
-        }
-        return false
+        return cleared
     }
 
     var groups: [LaunchItem] {
@@ -120,8 +219,25 @@ enum SharedStorage {
     static func iconURL(_ file: String) -> URL { iconsDir.appendingPathComponent(file) }
 
     static func loadBoard() -> Board {
+        // UI テスト用の見本の盤面（-GeodeSampleBoard）: 縦と横で並びの違うアイコンを置く
+        if isUITesting, ProcessInfo.processInfo.arguments.contains("-GeodeSampleBoard") {
+            return sampleBoard
+        }
         guard let data = try? Data(contentsOf: boardURL),
               let board = try? JSONDecoder().decode(Board.self, from: data) else { return Board() }
+        return board
+    }
+
+    private static var sampleBoard: Board {
+        func item(_ name: String, _ symbol: String) -> LaunchItem {
+            LaunchItem(kind: .action, name: name, urlString: "geode://brightness", symbol: symbol)
+        }
+        let a = item("Alpha", "star.fill"), b = item("Bravo", "heart.fill"), c = item("Charlie", "bolt.fill")
+        let d = item("Delta", "leaf.fill"), e = item("Echo", "moon.fill")
+        var board = Board()
+        // 縦だけにあるアイコン（Delta）と横だけにあるアイコン（Echo）も置く（並びの切り替えで新しく作られるアイコンの確認用）
+        board.slots = [0: a, 1: b, 2: c, 7: d]
+        board.setSlots([15: a, 16: b, 17: c, 10: e], for: .landscape)
         return board
     }
 

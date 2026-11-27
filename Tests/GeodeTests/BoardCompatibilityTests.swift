@@ -102,3 +102,97 @@ final class BoardCompatibilityTests: XCTestCase {
         XCTAssertEqual(board.referencedIconFiles, ["child.png", "top.png", "dock.png"])
     }
 }
+
+/// iPad の縦画面と横画面で別の配置を持つ仕組み
+final class LandscapeArrangementTests: XCTestCase {
+    private func item(_ name: String, icon: String? = nil) -> LaunchItem {
+        LaunchItem(kind: .action, name: name, iconFile: icon)
+    }
+
+    /// 行と列は縦と横で共通。横の配置が無いときは縦と同じ並び
+    func testLandscapeSharesTheGridAndStartsAsPortrait() {
+        var board = Board()          // 3 列 × 6 行
+        board.slots[1] = item("a")
+        board.slots[5] = item("b")
+
+        XCTAssertEqual(board.layout(for: .landscape), board.layout)
+        XCTAssertEqual(board.slots(for: .landscape)[1]?.name, "a")
+        XCTAssertEqual(board.slots(for: .landscape)[5]?.name, "b")
+        XCTAssertNil(board.landscapeSlots)     // 読むだけでは保存しない
+    }
+
+    /// 横画面で編集しても、縦画面の配置は変わらない
+    func testEditingLandscapeLeavesPortraitUntouched() {
+        var board = Board()
+        board.slots[0] = item("portrait")
+        var landscape = board.slots(for: .landscape)
+        landscape[0] = nil
+        landscape[3] = item("landscape-only", icon: "l.png")
+
+        board.setSlots(landscape, for: .landscape)
+
+        XCTAssertEqual(board.slots[0]?.name, "portrait")
+        XCTAssertNil(board.slots[3])
+        XCTAssertEqual(board.slots(for: .landscape)[3]?.name, "landscape-only")
+        XCTAssertNil(board.slots(for: .landscape)[0])
+    }
+
+    /// 以前の版（横画面で行と列を入れ替えていた頃）に保存した横の配置は使わず、縦と同じ並びで始める。データは消さない
+    func testOldTransposedLandscapeIsIgnoredButKept() throws {
+        var board = Board()
+        board.slots[0] = item("a")
+        board.landscapeLayout = GridLayout(columns: 6, rows: 3)
+        board.landscapeSlots = [7: item("old", icon: "old.png")]
+        let decoded = try JSONDecoder().decode(Board.self, from: JSONEncoder().encode(board))
+
+        XCTAssertFalse(decoded.hasLandscapeArrangement)
+        XCTAssertEqual(decoded.slots(for: .landscape)[0]?.name, "a")
+        XCTAssertNil(decoded.slots(for: .landscape)[7])
+        XCTAssertEqual(decoded.landscapeSlots?[7]?.name, "old")
+        XCTAssertTrue(decoded.referencedIconFiles.contains("old.png"), "使わなくなった配置のアイコン画像も消さない")
+    }
+
+    /// 横画面にだけ置いたアイテムも、アイコン画像の掃除と ID 検索の対象になる
+    func testLandscapeOnlyItemsAreFoundAndKeepTheirIcons() {
+        var board = Board()
+        let only = item("landscape-only", icon: "l.png")
+        board.setSlots([4: only], for: .landscape)
+
+        XCTAssertTrue(board.referencedIconFiles.contains("l.png"))
+        XCTAssertEqual(board.find(only.id)?.name, "landscape-only")
+    }
+
+    /// 以前のアプリで保存した盤面には横の配置が無く、縦と同じ並びで表示される
+    func testOldBoardsHaveNoStoredLandscape() throws {
+        var board = Board()
+        board.slots[0] = item("a")
+        let decoded = try JSONDecoder().decode(Board.self, from: JSONEncoder().encode(board))
+        XCTAssertNil(decoded.landscapeSlots)
+        XCTAssertNil(decoded.landscapeSharesGrid)
+        XCTAssertEqual(decoded.slots(for: .landscape)[0]?.name, "a")
+    }
+
+    /// 行と列を変えると、縦と横の両方の配置が新しいグリッドへ移る
+    func testChangingTheGridMovesBothArrangements() {
+        var board = Board()
+        board.layout = GridLayout(columns: 4, rows: 4)
+        board.slots[5] = item("p")                       // 1 行目 1 列目
+        board.setSlots([6: item("l")], for: .landscape)  // 1 行目 2 列目
+
+        XCTAssertTrue(board.changeLayout(to: GridLayout(columns: 3, rows: 5)))
+        XCTAssertEqual(board.slots[4]?.name, "p")                     // 1 行目 1 列目
+        XCTAssertEqual(board.slots(for: .landscape)[5]?.name, "l")    // 1 行目 2 列目
+    }
+
+    /// 横の配置が収まらないときは、縦も含めて行と列を変えない
+    func testGridChangeIsRefusedIfLandscapeDoesNotFit() {
+        var board = Board()
+        board.layout = GridLayout(columns: 4, rows: 4)
+        var full: [Int: LaunchItem] = [:]
+        for i in 0..<16 { full[i] = item("l\(i)") }
+        board.setSlots(full, for: .landscape)
+
+        XCTAssertFalse(board.changeLayout(to: GridLayout(columns: 3, rows: 4)))
+        XCTAssertEqual(board.layout, GridLayout(columns: 4, rows: 4))
+    }
+}

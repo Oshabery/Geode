@@ -134,7 +134,11 @@ final class GlowMotion: ObservableObject {
 
     private var lastOrientation: UIInterfaceOrientation = .unknown
 
+    /// 傾きを表す座標の向き。iPad ではグリッドと背景を端末に対して動かさない（`FixedCanvas`）ので、端末の座標のまま使う
     private var currentOrientation: UIInterfaceOrientation {
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            return .portrait
+        }
         let scene = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .first { $0.activationState == .foregroundActive }
@@ -770,120 +774,3 @@ extension View {
     }
 }
 
-/// 設定画面: グローの色を選ぶ
-struct GlowColorPicker: View {
-    @AppStorage(GlowPalette.key) private var themeHue = GlowPalette.defaultHue
-    @AppStorage(GlowPalette.gradientKey) private var gradient = false
-    @AppStorage(GlowPalette.monoKey) private var mono = false
-
-    private func swatch<S: ShapeStyle>(_ name: String, fill: S, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                ZStack {
-                    Circle().fill(Color.black)
-                    Circle().fill(fill)
-                    Circle().strokeBorder(Color.white.opacity(selected ? 0.95 : 0.25), lineWidth: selected ? 2 : 1)
-                }
-                .frame(width: 40, height: 40)
-                Text(name)
-                    .font(.caption2)
-                    .foregroundStyle(selected ? Color.primary : Color.secondary)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
-                    // アプリアイコンの配色。色相を変えると全体がそろってずれる
-                    swatch("グラデ",
-                           fill: LinearGradient(colors: GlowPalette.gradientColors(gradient ? themeHue : GlowPalette.gradientCenter),
-                                                startPoint: .topLeading, endPoint: .bottomTrailing).opacity(0.85),
-                           selected: gradient && !mono) {
-                        if !gradient || mono { themeHue = GlowPalette.gradientCenter }
-                        gradient = true
-                        mono = false
-                    }
-                    // 色を抜いた白黒
-                    swatch("モノトーン",
-                           fill: RadialGradient(colors: [Color(white: 0.85), .clear], center: .bottom,
-                                                startRadius: 0, endRadius: 26),
-                           selected: mono) {
-                        mono = true
-                        gradient = false
-                    }
-                    ForEach(GlowPalette.presets) { preset in
-                        swatch(preset.name,
-                               fill: RadialGradient(colors: [preset.swatch, .clear], center: .bottom,
-                                                    startRadius: 0, endRadius: 26),
-                               selected: !gradient && !mono && themeHue == preset.hue) {
-                            gradient = false
-                            mono = false
-                            themeHue = preset.hue
-                        }
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-            if !mono {
-            HStack {
-                Text(gradient ? "色相（全体）" : "色相")
-                Slider(value: $themeHue, in: 0...360, step: 1)
-                if gradient {
-                    Circle()
-                        .fill(LinearGradient(colors: GlowPalette.gradientColors(themeHue),
-                                             startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 20, height: 20)
-                } else {
-                    Circle()
-                        .fill(Color(hue: themeHue / 360, saturation: 0.85, brightness: 0.9))
-                        .frame(width: 20, height: 20)
-                }
-            }
-            }
-        }
-    }
-}
-
-/// 設定画面: 傾きで光を動かすかどうか
-/// 設定画面: グローのダーク / ライト
-struct GlowBrightnessPicker: View {
-    @AppStorage("glowLight") private var glowLight = false
-
-    var body: some View {
-        Picker("グローの明るさ", selection: $glowLight) {
-            Text("ダーク").tag(false)
-            Text("ライト").tag(true)
-        }
-        .pickerStyle(.segmented)
-    }
-}
-
-struct GlowMotionSettings: View {
-    @AppStorage("glowMotion") private var glowMotion = true
-    @AppStorage("glowMotionStrength") private var strength = 1.0
-    @AppStorage(GlowPalette.intensityKey) private var intensity = GlowPalette.defaultIntensity
-    @AppStorage("glowParallax") private var parallax = 8.0
-
-    var body: some View {
-        VStack(alignment: .leading) {
-            Text("ライトの強さ: \(Int(intensity)) / 10")
-            Slider(value: $intensity, in: 1...10, step: 1)
-        }
-        Toggle("傾きで光を動かす", isOn: $glowMotion)
-        if glowMotion {
-            VStack(alignment: .leading) {
-                Text("アイコンの浮き上がり（視差）: \(Int(parallax)) pt")
-                Slider(value: $parallax, in: 0...20, step: 1)
-            }
-        }
-        if glowMotion {
-            VStack(alignment: .leading) {
-                Text("動きの強さ: \(Int((strength * 100).rounded()))%")
-                Slider(value: $strength, in: 0.3...2, step: 0.1)
-            }
-        }
-    }
-}

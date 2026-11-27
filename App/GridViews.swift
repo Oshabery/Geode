@@ -91,15 +91,38 @@ enum GridDefaults {
 
 struct GridCells<Cell: View>: View {
     let metrics: GridMetrics
+    /// マスの中身の識別子（指定すると、配置が変わったときに同じアイコンが新しい位置へ動いて見える）。
+    /// 指定しなければマスの番号で識別する
+    var itemID: ((Int) -> AnyHashable)? = nil
     @ViewBuilder let cell: (Int) -> Cell
+    /// iPad: グリッドは端末に対して動かさず、アイコンだけを持った向きに回す（iPhone では 0）
+    @Environment(\.geodeIconAngle) private var iconAngle
+    /// iPad: 向きが変わったらアイコンを一度消して、ぷよっと出し直す
+    @Environment(\.geodeRevealToken) private var revealToken
+    @Environment(\.geodeIconsHidden) private var iconsHidden
+
+    private struct Entry: Identifiable {
+        let id: AnyHashable
+        let slot: Int
+    }
+
+    /// ForEach の識別子に中身の ID を使うことで、同じアイテムが別のマスへ移ったときに「移動」としてアニメーションする
+    private var entries: [Entry] {
+        (0..<metrics.layout.capacity).map { Entry(id: itemID?($0) ?? AnyHashable($0), slot: $0) }
+    }
 
     var body: some View {
         ZStack {
             Color.clear
-            ForEach(0..<metrics.layout.capacity, id: \.self) { slot in
-                cell(slot)
+            ForEach(entries) { entry in
+                cell(entry.slot)
                     .frame(width: metrics.cellSize.width, height: metrics.cellSize.height, alignment: .top)
-                    .position(metrics.center(slot))
+                    // 弾み方はアイコンから見た縦横で付けるので、回す前に掛ける
+                    .modifier(OrientationReveal(token: revealToken,
+                                                delay: OrientationReveal.delay(slot: entry.slot, layout: metrics.layout),
+                                                hidden: iconsHidden))
+                    .rotationEffect(.degrees(iconAngle))
+                    .position(metrics.center(entry.slot))
             }
         }
     }
@@ -355,12 +378,17 @@ struct GroupBackdrop: View {
     let focus: CGPoint?
     /// 明るい背景にする（グローのライト）。それ以外はこれまでどおり暗いすりガラス
     var light = false
+    /// iPad の回すキャンバスの範囲（グリッド内の座標）。あればキャンバス全体を覆う。
+    /// 無ければ（iPhone）これまでどおり画面全体を覆う
+    var canvas: CGRect? = nil
 
     var body: some View {
         let screen = UIScreen.main.bounds.size
-        // 明るい部分の中心（画面の座標）。分からなければ画面中央
-        let center = focus.map { CGPoint(x: gridFrame.minX + $0.x, y: gridFrame.minY + $0.y) }
-            ?? CGPoint(x: screen.width / 2, y: screen.height / 2)
+        // 覆う範囲（グリッド内の座標）。回したキャンバスの中では画面の座標が使えないので、キャンバスの範囲を使う
+        let area = canvas ?? CGRect(x: -gridFrame.minX, y: -gridFrame.minY, width: screen.width, height: screen.height)
+        // 明るい部分の中心（覆う範囲の中の座標）。分からなければ中央
+        let center = focus.map { CGPoint(x: $0.x - area.minX, y: $0.y - area.minY) }
+            ?? CGPoint(x: area.width / 2, y: area.height / 2)
         ZStack {
             if light {
                 // 明るいすりガラス。中心は透けて、離れるほど白い霧がかかる
@@ -382,10 +410,10 @@ struct GroupBackdrop: View {
                     .position(center)
             }
         }
-        .frame(width: screen.width, height: screen.height)
+        .frame(width: area.width, height: area.height)
         .clipped()
-        // グリッドの座標の中で、画面全体にぴったり重なる位置へ置く
-        .position(x: screen.width / 2 - gridFrame.minX, y: screen.height / 2 - gridFrame.minY)
+        // グリッドの座標の中で、覆う範囲にぴったり重なる位置へ置く
+        .position(x: area.midX, y: area.midY)
         .allowsHitTesting(false)
     }
 }
@@ -395,7 +423,11 @@ struct GroupBackdrop: View {
 /// - グループ: 触れている間だけ 1 レイヤー上へ中身を展開。アプリの上まで指を滑らせて離すと起動。
 ///   その場や空きマスで離すとホーム階層に戻る。
 struct LauncherGridView: View {
+    /// どちらの向きの配置を表示・操作するか（iPad の横画面は別の配置）
+    let orientation: BoardOrientation
     @EnvironmentObject private var store: BoardStore
+    /// iPad の回したキャンバスの大きさ（iPhone では nil）
+    @Environment(\.geodeCanvasSize) private var canvasSize
     @AppStorage("showLabels") private var showLabels = true
     @AppStorage("gridGap") private var gridGapX = GridDefaults.gapX
     @AppStorage("gridGapY") private var gridGapY = GridDefaults.gapY
@@ -444,17 +476,23 @@ struct LauncherGridView: View {
     private static let closeDuration = 0.22
     private static let closeAnimation = Animation.timingCurve(0.3, 0.0, 0.2, 1.0, duration: closeDuration)
 
+    /// 表示している向きの配置。表示・タッチ・ウィジェットから開くグループのすべてでこれを使う
+    private var pageSlots: [Int: LaunchItem] { store.board.slots(for: orientation) }
+
     var body: some View {
         GeometryReader { geo in
-            let metrics = GridMetrics(size: geo.size, layout: store.board.layout, showLabels: showLabels,
+            let metrics = GridMetrics(size: geo.size, layout: store.board.layout(for: orientation), showLabels: showLabels,
                                       gapX: gridGapX, gapY: gridGapY, iconScale: iconScale,
                                       labelSpacing: labelSpacing, outerMargin: outerMargin, offsetY: gridOffsetY)
             ZStack {
                 if showGridLines { GridLines(metrics: metrics) }
-                GridCells(metrics: metrics) { slot in
-                    TileView(item: store.board.slots[slot], metrics: metrics,
+                // iPad を回して縦と横の配置が切り替わるとき、同じアイコンが新しい位置へ動いて見えるよう、中身で識別する
+                GridCells(metrics: metrics, itemID: { slot in
+                    pageSlots[slot].map { AnyHashable($0.id) } ?? AnyHashable("empty-\(slot)")
+                }) { slot in
+                    TileView(item: pageSlots[slot], metrics: metrics,
                              highlighted: openGroup == nil && highlighted == slot,
-                             switchState: store.board.slots[slot].flatMap(store.switchState(for:)),
+                             switchState: pageSlots[slot].flatMap(store.switchState(for:)),
                              parallax: true)
                 }
                 .foregroundStyle(.tint)
@@ -464,7 +502,12 @@ struct LauncherGridView: View {
                     // 押しているグループの周りだけ少し明るくして、1 枚上の階層に上がった感じを出す
                     GroupBackdrop(gridFrame: geo.frame(in: .global),
                                   focus: groupSlot.map { metrics.center($0) },
-                                  light: isGlowLight)
+                                  light: isGlowLight,
+                                  canvas: canvasSize.map { size in
+                                      // キャンバスの原点（グリッドの座標）と大きさ
+                                      let f = geo.frame(in: .named(CanvasRotation.coordinateSpace))
+                                      return CGRect(x: -f.minX, y: -f.minY, width: size.width, height: size.height)
+                                  })
                         .transition(.opacity)
                         .zIndex(1)
                     // グループの中身: グループのマスから外へ広がるように、近いものから順に出てくる。
@@ -527,6 +570,11 @@ struct LauncherGridView: View {
         .onDisappear { store.groupLayerOpen = false }
         .onAppear(perform: openRequestedGroup)
         .onChange(of: store.requestedGroup) { _, _ in openRequestedGroup() }
+        // 向きが変わったら、開いているグループを閉じる（マスの位置が変わるため）
+        .onChange(of: orientation) { _, _ in
+            touchCancelled()
+            if openGroup != nil { close() }
+        }
     }
 
     private func touchMoved(_ slot: Int?, startedAt start: CGPoint) {
@@ -536,7 +584,7 @@ struct LauncherGridView: View {
         }
         // 指が触れている間は、グループの上にある限りレイヤーを開く。
         // 置いた瞬間に少しずれていても、指がグループの上に来た時点で開く（開いた後は離すまで閉じない）
-        if openGroup == nil, let slot, let item = store.board.slots[slot], item.kind == .group {
+        if openGroup == nil, let slot, let item = pageSlots[slot], item.kind == .group {
             openGroup = item
             groupSlot = slot
             // グループ階層に入った合図: カチッとした硬めの触覚
@@ -558,7 +606,7 @@ struct LauncherGridView: View {
             // グループ自身のマス、空きマス、格子の外ではホーム階層に戻るだけ。
             if let slot, slot != groupSlot, let child = group.children[slot] { store.launch(child) }
             close()
-        } else if let slot, slot == touchStart, let item = store.board.slots[slot], item.kind == .action {
+        } else if let slot, slot == touchStart, let item = pageSlots[slot], item.kind == .action {
             store.launch(item)
         }
     }
@@ -580,7 +628,7 @@ struct LauncherGridView: View {
     private func openRequestedGroup() {
         guard let id = store.requestedGroup else { return }
         store.requestedGroup = nil
-        if let entry = store.board.slots.first(where: { $0.value.id == id }) {
+        if let entry = pageSlots.first(where: { $0.value.id == id }) {
             openGroup = entry.value
             groupSlot = entry.key
         }
